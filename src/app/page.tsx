@@ -829,7 +829,12 @@ export default function SpinMintApp() {
   const { connectors, connect } = useConnect();
   const { writeContractAsync } = useWriteContract();
   const { switchChainAsync }   = useSwitchChain();
-  const { data: receipt } = useWaitForTransactionReceipt({ hash: txHash, query: { enabled: !!txHash } });
+  const { data: receipt } = useWaitForTransactionReceipt({
+    hash: txHash,
+    chainId: CHAIN_ID,
+    pollingInterval: 2000,
+    query: { enabled: !!txHash },
+  });
 
   // Mounted guard — prevents SSR/client hydration mismatch for wallet-dependent UI
   useEffect(() => { setMounted(true); }, []);
