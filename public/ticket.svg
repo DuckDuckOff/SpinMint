@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#1a0a2e"/>
+      <stop offset="100%" stop-color="#0d0d1a"/>
+    </radialGradient>
+    <radialGradient id="disc" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FFD700"/>
+      <stop offset="40%" stop-color="#FF6B35"/>
+      <stop offset="70%" stop-color="#A855F7"/>
+      <stop offset="100%" stop-color="#4ECDC4"/>
+    </radialGradient>
+  </defs>
+  <!-- Background -->
+  <circle cx="100" cy="100" r="100" fill="url(#bg)"/>
+  <!-- Outer ring -->
+  <circle cx="100" cy="100" r="88" fill="none" stroke="#FFD700" stroke-width="2" opacity="0.6"/>
+  <!-- Lollie disc -->
+  <circle cx="100" cy="90" r="55" fill="url(#disc)" opacity="0.95"/>
+  <!-- Swirl lines -->
+  <path d="M100 35 Q140 55 140 90 Q140 125 100 145 Q60 125 60 90 Q60 55 100 35" fill="none" stroke="white" stroke-width="2" opacity="0.4"/>
+  <path d="M100 45 Q130 62 130 90 Q130 118 100 135 Q70 118 70 90 Q70 62 100 45" fill="none" stroke="white" stroke-width="1.5" opacity="0.3"/>
+  <path d="M100 55 Q120 68 120 90 Q120 112 100 125 Q80 112 80 90 Q80 68 100 55" fill="none" stroke="white" stroke-width="1" opacity="0.2"/>
+  <!-- Stick -->
+  <rect x="95" y="140" width="10" height="45" rx="5" fill="#E8E0D0"/>
+  <rect x="97" y="140" width="3" height="45" rx="2" fill="#F5F0E8" opacity="0.6"/>
+  <!-- Glow -->
+  <circle cx="100" cy="90" r="55" fill="none" stroke="#FFD700" stroke-width="3" opacity="0.3"/>
+  <!-- SpinMint label -->
+  <text x="100" y="186" text-anchor="middle" font-family="monospace" font-size="9" fill="#FFD700" opacity="0.8">SPINMINT</text>
+</svg>
