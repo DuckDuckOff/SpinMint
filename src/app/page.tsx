@@ -626,7 +626,7 @@ function CollectiblePanel({
         setPhase("approving");
         const approveHash = await panelWrite({
           address: USDC_ADDRESS, abi: ERC20_ABI, functionName: "approve",
-          args: [SPINMINT_ADDRESS, parseUnits("100", 6)],
+          args: [SPINMINT_ADDRESS, parseUnits("2", 6)],
         });
         await waitForTransactionReceipt(panelConfig, { hash: approveHash, chainId: CHAIN_ID });
       }
@@ -889,7 +889,7 @@ export default function SpinMintApp() {
         setPhase("approving");
         const approveHash = await safeWrite({
           address: USDC_ADDRESS, abi: ERC20_ABI, functionName: "approve",
-          args: [SPINMINT_ADDRESS, parseUnits("100", 6)],
+          args: [SPINMINT_ADDRESS, parseUnits("1", 6)],
         });
         // Wait for approve to confirm on-chain before spending the allowance
         await waitForTransactionReceipt(config, { hash: approveHash, chainId: CHAIN_ID });
