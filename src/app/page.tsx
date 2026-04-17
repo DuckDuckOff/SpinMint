@@ -224,11 +224,27 @@ function LEDRing({ spinning, winTier }: { spinning: boolean; winTier: number | n
 }
 
 // ─── Wheel ────────────────────────────────────────────────────────────────────
-const WHEEL_SIZE = 340;
+function useWheelSize() {
+  const [size, setSize] = useState(280);
+  useEffect(() => {
+    const calc = () => {
+      // fit wheel within viewport: leave room for header (~70px), jackpot (~70px), stats (~50px), buttons (~120px), gaps
+      const available = Math.min(window.innerHeight - 340, window.innerWidth - 40);
+      setSize(Math.max(200, Math.min(320, available)));
+    };
+    calc();
+    window.addEventListener("resize", calc);
+    return () => window.removeEventListener("resize", calc);
+  }, []);
+  return size;
+}
 
-function SpinWheel({ spinning, winTier, onSpinEnd, onTick }: {
+const WHEEL_SIZE = 280; // fallback for SSR
+
+function SpinWheel({ spinning, winTier, onSpinEnd, onTick, size }: {
   spinning: boolean; winTier: number | null;
   onSpinEnd: () => void; onTick: (speed: number) => void;
+  size: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const angleRef  = useRef(0);
@@ -353,7 +369,7 @@ function SpinWheel({ spinning, winTier, onSpinEnd, onTick }: {
   return (
     <div style={{
       position: "relative",
-      width: WHEEL_SIZE + 40, height: WHEEL_SIZE + 40,
+      width: size + 40, height: size + 40,
       display: "flex", alignItems: "center", justifyContent: "center",
       flexShrink: 0,
     }}>
@@ -363,7 +379,7 @@ function SpinWheel({ spinning, winTier, onSpinEnd, onTick }: {
         transition: pulsing ? "none" : "transform 0.12s ease-out",
         willChange: "transform",
       }}>
-        <canvas ref={canvasRef} width={WHEEL_SIZE} height={WHEEL_SIZE} style={{
+        <canvas ref={canvasRef} width={size} height={size} style={{
           borderRadius: "50%",
           filter: spinning
             ? "drop-shadow(0 0 32px #FFD70077) drop-shadow(0 0 8px #fff4)"
@@ -700,6 +716,7 @@ function CollectiblePanel({
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function SpinMintApp() {
+  const wheelSize = useWheelSize();
   const { address, connector } = useAccount();
   const [mounted, setMounted]     = useState(false);
   const [phase, setPhase]         = useState<Phase>("idle");
@@ -858,7 +875,7 @@ const { data: receipt } = useWaitForTransactionReceipt({
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Bebas+Neue&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
-        body{background:#000;color:#fff;font-family:'Space Mono',monospace;overflow:hidden}
+        body{background:#000;color:#fff;font-family:'Space Mono',monospace;overflow-x:hidden}
 
         @keyframes orbFloat {
           from{transform:translateY(0) scale(1)}
@@ -923,23 +940,23 @@ const { data: receipt } = useWaitForTransactionReceipt({
       <div className="scanline" onClick={bootAudio} style={{
         position: "relative", zIndex: 1,
         minHeight: "100dvh", display: "flex", flexDirection: "column",
-        alignItems: "center", padding: "10px 14px 16px", gap: "8px",
-        overflow: "hidden",
+        alignItems: "center", padding: "8px 12px 12px", gap: "6px",
+        overflowX: "hidden", overflowY: "auto",
       }}>
 
         {/* Header */}
         <div style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <h1 style={{ fontFamily: "'Bebas Neue'", fontSize: 42, letterSpacing: 5, lineHeight: 1 }}>
+            <h1 style={{ fontFamily: "'Bebas Neue'", fontSize: 34, letterSpacing: 4, lineHeight: 1 }}>
               <span style={{ color: "#FFD700", textShadow: "0 0 24px #FFD700, 0 0 48px #FFD70066" }}>SPIN</span>
               <span style={{ color: "#fff", textShadow: "0 0 12px #ffffff44" }}>MINT</span>
             </h1>
-            <p style={{ fontSize: 9, color: "#FFD70077", letterSpacing: 5, fontFamily: "'Space Mono',monospace" }}>MINT · SPIN · WIN</p>
+            <p style={{ fontSize: 8, color: "#FFD70077", letterSpacing: 4, fontFamily: "'Space Mono',monospace" }}>MINT · SPIN · WIN</p>
           </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <div style={{ textAlign: "right" }}>
               <p style={{ fontSize: 8, color: "#ffffff44", letterSpacing: 2 }}>TOTAL MINTS</p>
-              <p style={{ fontFamily: "'Bebas Neue'", fontSize: 28, color: "#4ECDC4", textShadow: "0 0 14px #4ECDC4" }}>
+              <p style={{ fontFamily: "'Bebas Neue'", fontSize: 22, color: "#4ECDC4", textShadow: "0 0 14px #4ECDC4" }}>
                 {totalMints.toString()}
               </p>
             </div>
@@ -956,23 +973,19 @@ const { data: receipt } = useWaitForTransactionReceipt({
 
         {/* Jackpot banner */}
         <div style={{
-          width: "100%", borderRadius: 18, padding: "12px 20px",
+          width: "100%", borderRadius: 14, padding: "8px 14px",
           background: "linear-gradient(135deg,#1a1008,#2a1808,#1a1008)",
           border: "1px solid #FFD70066",
           display: "flex", justifyContent: "space-between", alignItems: "center",
           animation: "glow 2.5s ease-in-out infinite",
         }}>
           <div>
-            <p style={{ fontSize: 9, color: "#FFD70099", letterSpacing: 4, fontFamily: "'Space Mono',monospace" }}>JACKPOT POOL</p>
-            <p className="jackpot-num" style={{ fontSize: 44, lineHeight: 1 }}>{fmt(jackpot)}</p>
+            <p style={{ fontSize: 8, color: "#FFD70099", letterSpacing: 3, fontFamily: "'Space Mono',monospace" }}>JACKPOT POOL</p>
+            <p className="jackpot-num" style={{ fontSize: 34, lineHeight: 1 }}>{fmt(jackpot)}</p>
           </div>
           <div style={{ textAlign: "right" }}>
-            <p style={{ fontSize: 9, color: "#ffffff55", letterSpacing: 2 }}>TOP PRIZE</p>
-            <p style={{
-              fontFamily: "'Bebas Neue'", fontSize: 22,
-              color: "#FFD700", textShadow: "0 0 10px #FFD700",
-              letterSpacing: 2,
-            }}>2% ODDS</p>
+            <p style={{ fontSize: 8, color: "#ffffff55", letterSpacing: 2 }}>TOP PRIZE</p>
+            <p style={{ fontFamily: "'Bebas Neue'", fontSize: 18, color: "#FFD700", textShadow: "0 0 10px #FFD700", letterSpacing: 2 }}>2% ODDS</p>
           </div>
         </div>
 
@@ -983,6 +996,7 @@ const { data: receipt } = useWaitForTransactionReceipt({
             winTier={winTier}
             onSpinEnd={onSpinEnd}
             onTick={handleTick}
+            size={wheelSize}
           />
         </div>
 
