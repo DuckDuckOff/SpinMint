@@ -939,9 +939,9 @@ const { data: receipt } = useWaitForTransactionReceipt({
 
       <div className="scanline" onClick={bootAudio} style={{
         position: "relative", zIndex: 1,
-        minHeight: "100dvh", display: "flex", flexDirection: "column",
-        alignItems: "center", padding: "8px 12px 12px", gap: "6px",
-        overflowX: "hidden", overflowY: "auto",
+        height: "100dvh", display: "flex", flexDirection: "column",
+        alignItems: "center", padding: "8px 12px 0", gap: "6px",
+        overflow: "hidden",
       }}>
 
         {/* Header */}
@@ -989,8 +989,8 @@ const { data: receipt } = useWaitForTransactionReceipt({
           </div>
         </div>
 
-        {/* Wheel */}
-        <div style={{ animation: "fadeIn 0.5s ease-out" }}>
+        {/* Wheel — flex:1 so it takes whatever space remains */}
+        <div style={{ flex: "1 1 0", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", animation: "fadeIn 0.5s ease-out" }}>
           <SpinWheel
             spinning={isSpinning}
             winTier={winTier}
@@ -1002,18 +1002,18 @@ const { data: receipt } = useWaitForTransactionReceipt({
 
         {/* User stats */}
         {mounted && address && (
-          <div style={{ display: "flex", gap: "8px", width: "100%" }}>
+          <div style={{ display: "flex", gap: "6px", width: "100%", flexShrink: 0 }}>
             {[
               { label: "STREAK", val: `${userStreak.toString()}`, color: "#FF6B35" },
               { label: "FREE SPIN", val: hasFree ? "READY!" : "–", color: hasFree ? "#4ECDC4" : "#ffffff22" },
             ].map(({ label, val, color }) => (
               <div key={label} style={{
-                flex: 1, borderRadius: 12, padding: "8px 12px",
+                flex: 1, borderRadius: 10, padding: "5px 10px",
                 background: "#ffffff07", border: `1px solid ${color}33`,
                 textAlign: "center",
               }}>
-                <p style={{ fontSize: 8, color: "#ffffff44", letterSpacing: 3, fontFamily: "'Space Mono',monospace" }}>{label}</p>
-                <p style={{ fontSize: 24, color, fontFamily: "'Bebas Neue'", textShadow: `0 0 14px ${color}`, letterSpacing: 2 }}>
+                <p style={{ fontSize: 7, color: "#ffffff44", letterSpacing: 2 }}>{label}</p>
+                <p style={{ fontSize: 18, color, fontFamily: "'Bebas Neue'", textShadow: `0 0 10px ${color}`, letterSpacing: 2 }}>
                   {val}
                 </p>
               </div>
@@ -1023,26 +1023,22 @@ const { data: receipt } = useWaitForTransactionReceipt({
 
         {/* Error */}
         {error && (
-          <div style={{
-            width: "100%", borderRadius: 10, padding: "8px 12px",
-            background: "#ff000011", border: "1px solid #ff000033",
-            fontSize: 10, color: "#ff6b6b",
-          }}>
+          <div style={{ width: "100%", borderRadius: 10, padding: "6px 10px", background: "#ff000011", border: "1px solid #ff000033", fontSize: 9, color: "#ff6b6b", flexShrink: 0 }}>
             {error}
           </div>
         )}
 
-        {/* CTA */}
-        <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 8, marginTop: "auto" }}>
+        {/* CTA — sticky to bottom */}
+        <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 6, flexShrink: 0, paddingBottom: 10 }}>
           {!mounted ? null : !address ? (
             <button
               onClick={() => { bootAudio(); connect({ connector: connectors[0], chainId: CHAIN_ID }); }}
               className="shimmer-btn"
               style={{
-                width: "100%", padding: "20px", borderRadius: 16,
+                width: "100%", padding: "16px", borderRadius: 14,
                 border: "none", cursor: "pointer",
                 fontFamily: "'Bebas Neue',sans-serif",
-                fontSize: 22, letterSpacing: 4, color: "#000",
+                fontSize: 20, letterSpacing: 4, color: "#000",
               }}
             >
               CONNECT WALLET
@@ -1054,10 +1050,10 @@ const { data: receipt } = useWaitForTransactionReceipt({
                 disabled={isBusy || isSpinning}
                 className={isBusy || isSpinning ? "" : "shimmer-btn"}
                 style={{
-                  width: "100%", padding: "18px", borderRadius: 16,
+                  width: "100%", padding: "15px", borderRadius: 14,
                   border: "none", cursor: isBusy || isSpinning ? "not-allowed" : "pointer",
                   fontFamily: "'Bebas Neue',sans-serif",
-                  fontSize: 20, letterSpacing: 4, color: "#000",
+                  fontSize: 18, letterSpacing: 4, color: "#000",
                   opacity: isBusy || isSpinning ? 0.5 : 1,
                   background: isBusy || isSpinning ? "#555" : undefined,
                   transition: "opacity 0.2s",
@@ -1068,14 +1064,13 @@ const { data: receipt } = useWaitForTransactionReceipt({
 
               {hasFree && (
                 <button onClick={handleFreeSpin} disabled={isBusy || isSpinning} style={{
-                  width: "100%", padding: "14px", borderRadius: 14,
+                  width: "100%", padding: "11px", borderRadius: 12,
                   background: "#4ECDC411", border: "2px solid #4ECDC4",
                   color: "#4ECDC4", fontFamily: "'Bebas Neue',sans-serif",
-                  fontSize: 18, letterSpacing: 4,
+                  fontSize: 16, letterSpacing: 4,
                   cursor: isBusy || isSpinning ? "not-allowed" : "pointer",
                   opacity: isBusy || isSpinning ? 0.5 : 1,
                   textShadow: "0 0 14px #4ECDC4",
-                  boxShadow: "0 0 20px #4ECDC433",
                 }}>
                   FREE SPIN — USE IT!
                 </button>
@@ -1087,37 +1082,15 @@ const { data: receipt } = useWaitForTransactionReceipt({
                 const url = encodeURIComponent(process.env.NEXT_PUBLIC_APP_URL ?? window.location.href);
                 window.open(`https://t.me/share/url?url=${url}&text=${text}`, "_blank");
               }} style={{
-                width: "100%", padding: "11px", borderRadius: 12,
+                width: "100%", padding: "8px", borderRadius: 10,
                 background: "transparent", border: "1px solid #ffffff18",
-                color: "#ffffff55", fontSize: 10, letterSpacing: 3,
+                color: "#ffffff55", fontSize: 9, letterSpacing: 3,
                 fontFamily: "'Space Mono',monospace", cursor: "pointer",
               }}>
                 SHARE & EARN FREE SPIN
               </button>
             </>
           )}
-        </div>
-
-        {/* Prize table */}
-        <div style={{
-          width: "100%", borderRadius: 12, padding: "10px 12px",
-          background: "#ffffff04", border: "1px solid #ffffff07", fontSize: 9,
-        }}>
-          <p style={{ color: "#ffffff33", letterSpacing: 2, marginBottom: 6 }}>PRIZE TABLE</p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            {PRIZES.map(p => (
-              <div key={p.tier} style={{
-                display: "flex", justifyContent: "space-between",
-                color: "#ffffff66", paddingBottom: 3,
-                borderBottom: "1px solid #ffffff06",
-              }}>
-                <span style={{ color: p.color, textShadow: `0 0 8px ${p.color}66` }}>{p.label}</span>
-                <span style={{ color: "#ffffff33" }}>
-                  {p.tier === 0 ? "2%" : p.tier === 1 ? "8%" : p.tier === 2 ? "15%" : p.tier === 3 ? "20%" : p.tier === 5 ? "coming soon" : "55%"}
-                </span>
-              </div>
-            ))}
-          </div>
         </div>
 
       </div>
