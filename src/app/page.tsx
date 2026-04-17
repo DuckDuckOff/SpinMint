@@ -225,12 +225,11 @@ function LEDRing({ spinning, winTier }: { spinning: boolean; winTier: number | n
 
 // ─── Wheel ────────────────────────────────────────────────────────────────────
 function useWheelSize() {
-  const [size, setSize] = useState(280);
+  const [size, setSize] = useState(220);
   useEffect(() => {
     const calc = () => {
-      // fit wheel within viewport: leave room for header (~70px), jackpot (~70px), stats (~50px), buttons (~120px), gaps
       const available = Math.min(window.innerHeight - 340, window.innerWidth - 40);
-      setSize(Math.max(200, Math.min(320, available)));
+      setSize(Math.max(180, Math.min(260, available)));
     };
     calc();
     window.addEventListener("resize", calc);
@@ -239,7 +238,7 @@ function useWheelSize() {
   return size;
 }
 
-const WHEEL_SIZE = 280; // fallback for SSR
+const WHEEL_SIZE = 220; // fallback for SSR
 
 function SpinWheel({ spinning, winTier, onSpinEnd, onTick, size }: {
   spinning: boolean; winTier: number | null;
@@ -875,7 +874,9 @@ const { data: receipt } = useWaitForTransactionReceipt({
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Bebas+Neue&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
-        body{background:#000;color:#fff;font-family:'Space Mono',monospace;overflow-y:scroll;overflow-x:hidden}
+        html,body{height:100%;overflow:hidden;background:#000}
+        body{color:#fff;font-family:'Space Mono',monospace}
+        #scroll-root{position:fixed;inset:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
 
         @keyframes orbFloat {
           from{transform:translateY(0) scale(1)}
@@ -935,18 +936,19 @@ const { data: receipt } = useWaitForTransactionReceipt({
         }
       `}</style>
 
+      <div id="scroll-root">
       <CasinoBackground />
 
       <div className="scanline" onClick={bootAudio} style={{
         position: "relative", zIndex: 1,
         minHeight: "100dvh", display: "flex", flexDirection: "column",
-        alignItems: "center", padding: "8px 12px 16px", gap: "8px",
+        alignItems: "center", padding: "6px 10px 14px", gap: "6px",
       }}>
 
         {/* Header */}
         <div style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <h1 style={{ fontFamily: "'Bebas Neue'", fontSize: 34, letterSpacing: 4, lineHeight: 1 }}>
+            <h1 style={{ fontFamily: "'Bebas Neue'", fontSize: 28, letterSpacing: 3, lineHeight: 1 }}>
               <span style={{ color: "#FFD700", textShadow: "0 0 24px #FFD700, 0 0 48px #FFD70066" }}>SPIN</span>
               <span style={{ color: "#fff", textShadow: "0 0 12px #ffffff44" }}>MINT</span>
             </h1>
@@ -972,7 +974,7 @@ const { data: receipt } = useWaitForTransactionReceipt({
 
         {/* Jackpot banner */}
         <div style={{
-          width: "100%", borderRadius: 14, padding: "8px 14px",
+          width: "100%", borderRadius: 12, padding: "6px 12px",
           background: "linear-gradient(135deg,#1a1008,#2a1808,#1a1008)",
           border: "1px solid #FFD70066",
           display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -980,7 +982,7 @@ const { data: receipt } = useWaitForTransactionReceipt({
         }}>
           <div>
             <p style={{ fontSize: 8, color: "#FFD70099", letterSpacing: 3, fontFamily: "'Space Mono',monospace" }}>JACKPOT POOL</p>
-            <p className="jackpot-num" style={{ fontSize: 34, lineHeight: 1 }}>{fmt(jackpot)}</p>
+            <p className="jackpot-num" style={{ fontSize: 28, lineHeight: 1 }}>{fmt(jackpot)}</p>
           </div>
           <div style={{ textAlign: "right" }}>
             <p style={{ fontSize: 8, color: "#ffffff55", letterSpacing: 2 }}>TOP PRIZE</p>
@@ -1147,6 +1149,7 @@ const { data: receipt } = useWaitForTransactionReceipt({
       {showCollectible && (
         <CollectiblePanel onClose={() => setShowCollectible(false)} />
       )}
+      </div>{/* end scroll-root */}
     </>
   );
 }
