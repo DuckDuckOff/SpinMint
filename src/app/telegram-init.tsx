@@ -13,6 +13,10 @@ export default function TelegramInit() {
       WebApp.expand();
       WebApp.setHeaderColor("#0a0a0f");
       WebApp.setBackgroundColor("#0a0a0f");
+      // Allow the page to scroll within the Mini App
+      if (WebApp.version && parseFloat(WebApp.version) >= 6.1) {
+        (WebApp as any).enableClosingConfirmation?.();
+      }
     });
   }, []);
 

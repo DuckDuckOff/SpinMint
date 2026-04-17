@@ -875,7 +875,7 @@ const { data: receipt } = useWaitForTransactionReceipt({
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Bebas+Neue&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
-        body{background:#000;color:#fff;font-family:'Space Mono',monospace;overflow-x:hidden}
+        body{background:#000;color:#fff;font-family:'Space Mono',monospace;overflow-y:scroll;overflow-x:hidden}
 
         @keyframes orbFloat {
           from{transform:translateY(0) scale(1)}
@@ -939,9 +939,8 @@ const { data: receipt } = useWaitForTransactionReceipt({
 
       <div className="scanline" onClick={bootAudio} style={{
         position: "relative", zIndex: 1,
-        height: "100dvh", display: "flex", flexDirection: "column",
-        alignItems: "center", padding: "8px 12px 0", gap: "6px",
-        overflow: "hidden",
+        minHeight: "100dvh", display: "flex", flexDirection: "column",
+        alignItems: "center", padding: "8px 12px 16px", gap: "8px",
       }}>
 
         {/* Header */}
@@ -989,8 +988,8 @@ const { data: receipt } = useWaitForTransactionReceipt({
           </div>
         </div>
 
-        {/* Wheel — flex:1 so it takes whatever space remains */}
-        <div style={{ flex: "1 1 0", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", animation: "fadeIn 0.5s ease-out" }}>
+        {/* Wheel */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", animation: "fadeIn 0.5s ease-out" }}>
           <SpinWheel
             spinning={isSpinning}
             winTier={winTier}
