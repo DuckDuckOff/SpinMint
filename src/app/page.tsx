@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { useMiniKit } from "@coinbase/onchainkit/minikit";
 import { traitsFromSeed, rarityScore, rarityLabel, RARITY_COLORS } from "../lib/traits";
 import { generateSVG } from "../lib/svgGenerator";
-import { useAccount, useWriteContract, useReadContract, useWaitForTransactionReceipt, useConnect, useSwitchChain, useConfig } from "wagmi";
+import { useAccount, useWriteContract, useReadContract, useWaitForTransactionReceipt, useConnect, useConfig } from "wagmi";
 import { waitForTransactionReceipt } from "@wagmi/core";
 import { parseUnits, formatUnits, decodeEventLog } from "viem";
+import { SPINMINT_ABI } from "../lib/abi";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 const SPINMINT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}`;
@@ -17,46 +17,6 @@ const USDC_ADDRESS = (
     : "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
 ) as `0x${string}`;
 
-const SPINMINT_ABI = [
-  { name: "mintAndSpin",     type: "function", stateMutability: "nonpayable", inputs: [], outputs: [] },
-  { name: "useFreeSpin",     type: "function", stateMutability: "nonpayable", inputs: [], outputs: [] },
-  { name: "mintCollectible", type: "function", stateMutability: "nonpayable",
-    inputs: [{ name: "seed", type: "uint256" }], outputs: [] },
-  {
-    name: "CollectibleMinted", type: "event",
-    inputs: [
-      { name: "user",    type: "address", indexed: true },
-      { name: "tokenId", type: "uint256", indexed: true },
-      { name: "seed",    type: "uint256", indexed: false },
-    ],
-  },
-  {
-    name: "getStats", type: "function", stateMutability: "view", inputs: [],
-    outputs: [
-      { name: "_jackpotPool",     type: "uint256" },
-      { name: "_totalMints",      type: "uint256" },
-      { name: "_contractBalance", type: "uint256" },
-    ],
-  },
-  {
-    name: "getUserInfo", type: "function", stateMutability: "view",
-    inputs: [{ name: "user", type: "address" }],
-    outputs: [
-      { name: "_streak",          type: "uint256" },
-      { name: "_hasFreecastSpin", type: "bool" },
-      { name: "_spinTickets",     type: "uint256" },
-      { name: "_rareNFTs",        type: "uint256" },
-    ],
-  },
-  {
-    name: "SpinResult", type: "event",
-    inputs: [
-      { name: "user",  type: "address", indexed: true },
-      { name: "tier",  type: "uint8",   indexed: false },
-      { name: "prize", type: "uint256", indexed: false },
-    ],
-  },
-] as const;
 
 const ERC20_ABI = [
   {
@@ -592,56 +552,18 @@ function randomSeed(): bigint {
 
 // ─── NFT Collectible Panel ────────────────────────────────────────────────────
 function CollectiblePanel({
-  onClose, address, allowance, writeContractAsync,
+  onClose,
 }: {
   onClose: () => void;
-  address: `0x${string}` | undefined;
-  allowance: bigint | undefined;
-  writeContractAsync: (args: any) => Promise<`0x${string}`>;
 }) {
-  const { connector: panelConnector } = useAccount();
-  const panelConfig = useConfig();
-  const panelWrite = async (args: Parameters<typeof writeContractAsync>[0]) => {
-    return writeContractAsync({ ...args, connector: panelConnector, chainId: CHAIN_ID });
-  };
-  const [seed, setSeed]       = useState<bigint>(randomSeed);
-  const [phase, setPhase]     = useState<"idle" | "approving" | "minting" | "done" | "error">("idle");
-  const [errMsg, setErrMsg]   = useState("");
+  const [seed, setSeed] = useState<bigint>(randomSeed);
 
   const traits = traitsFromSeed(seed);
   const score  = rarityScore(traits);
   const label  = rarityLabel(score);
   const rc     = RARITY_COLORS[label] ?? RARITY_COLORS.Common;
-  // tokenId=0 for preview — doesn't affect visual output, only metadata label
   const svg    = generateSVG(0, seed);
   const svgUrl = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-
-  const PRICE = parseUnits("2", 6); // $2 USDC
-
-  const handleMint = async () => {
-    if (!address) return;
-    setErrMsg("");
-    try {
-      if (!allowance || allowance < PRICE) {
-        setPhase("approving");
-        const approveHash = await panelWrite({
-          address: USDC_ADDRESS, abi: ERC20_ABI, functionName: "approve",
-          args: [SPINMINT_ADDRESS, parseUnits("2", 6)],
-        });
-        await waitForTransactionReceipt(panelConfig, { hash: approveHash, chainId: CHAIN_ID });
-      }
-      setPhase("minting");
-      await panelWrite({
-        address: SPINMINT_ADDRESS, abi: SPINMINT_ABI,
-        functionName: "mintCollectible",
-        args: [seed],
-      });
-      setPhase("done");
-    } catch (e: unknown) {
-      setErrMsg(e instanceof Error ? e.message.slice(0, 120) : "Mint failed");
-      setPhase("error");
-    }
-  };
 
   const TRAIT_ENTRIES = [
     { name: "Palette",    value: traits.palette.value,    rarity: traits.palette.rarity },
@@ -749,7 +671,7 @@ function CollectiblePanel({
 
         {/* Actions */}
         <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-          <button onClick={() => { setSeed(randomSeed()); setPhase("idle"); setErrMsg(""); }} style={{
+          <button onClick={() => { setSeed(randomSeed()); }} style={{
             flex: 1, padding: "11px", borderRadius: 10,
             background: "transparent", border: "1px solid #ffffff22",
             color: "#ffffffaa", fontFamily: "'Space Mono',monospace",
@@ -757,38 +679,16 @@ function CollectiblePanel({
           }}>
             SHUFFLE
           </button>
-          {phase === "done" ? (
-            <div style={{
-              flex: 2, padding: "11px", borderRadius: 10,
-              background: "#2ED57322", border: "1px solid #2ED573",
-              color: "#2ED573", fontFamily: "'Space Mono',monospace",
-              fontSize: 10, letterSpacing: 1, textAlign: "center",
-            }}>
-              MINTED!
-            </div>
-          ) : (
-            <button
-              onClick={handleMint}
-              disabled={phase === "approving" || phase === "minting" || !address}
-              style={{
-                flex: 2, padding: "11px", borderRadius: 10,
-                background: phase === "approving" || phase === "minting" ? "#333" : rc.color,
-                border: "none", color: "#000",
-                fontFamily: "'Space Mono',monospace", fontWeight: "bold",
-                fontSize: 10, letterSpacing: 2, cursor: "pointer",
-                opacity: !address ? 0.4 : 1,
-              }}
-            >
-              {phase === "approving" ? "APPROVING..." : phase === "minting" ? "MINTING..." : "MINT  $2 USDC"}
-            </button>
-          )}
-        </div>
-
-        {errMsg && (
-          <div style={{ marginTop: 8, padding: "8px 10px", borderRadius: 8, background: "#ff000011", border: "1px solid #ff000033", fontSize: 9, color: "#ff6b6b" }}>
-            {errMsg}
+          <div style={{
+            flex: 2, padding: "11px", borderRadius: 10,
+            background: "#A855F711", border: "1px solid #A855F755",
+            color: "#A855F7", fontFamily: "'Space Mono',monospace",
+            fontSize: 9, letterSpacing: 1, textAlign: "center",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            EARN VIA LUCKY SPIN
           </div>
-        )}
+        </div>
 
         <p style={{ marginTop: 10, fontSize: 8, color: "#ffffff22", textAlign: "center", letterSpacing: 1 }}>
           Each collectible is unique on-chain — traits locked at mint. OpenSea compatible.
@@ -800,7 +700,6 @@ function CollectiblePanel({
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function SpinMintApp() {
-  const { setFrameReady, isFrameReady } = useMiniKit();
   const { address, connector } = useAccount();
   const [mounted, setMounted]     = useState(false);
   const [phase, setPhase]         = useState<Phase>("idle");
@@ -828,8 +727,7 @@ export default function SpinMintApp() {
   const config = useConfig();
   const { connectors, connect } = useConnect();
   const { writeContractAsync } = useWriteContract();
-  const { switchChainAsync }   = useSwitchChain();
-  const { data: receipt } = useWaitForTransactionReceipt({
+const { data: receipt } = useWaitForTransactionReceipt({
     hash: txHash,
     chainId: CHAIN_ID,
     pollingInterval: 2000,
@@ -839,17 +737,28 @@ export default function SpinMintApp() {
   // Mounted guard — prevents SSR/client hydration mismatch for wallet-dependent UI
   useEffect(() => { setMounted(true); }, []);
 
-  // Frame ready
-  useEffect(() => { if (!isFrameReady) setFrameReady(); }, [isFrameReady, setFrameReady]);
-
-  // Decode SpinResult from receipt
+  // Decode SpinResult from receipt (V2: prize + isJackpot)
   useEffect(() => {
     if (!receipt) return;
     let tier = 4;
     for (const log of receipt.logs) {
       try {
         const decoded = decodeEventLog({ abi: SPINMINT_ABI, eventName: "SpinResult", data: log.data, topics: log.topics });
-        tier = decoded.args.tier;
+        const { prize, isJackpot } = decoded.args as { prize: bigint; isJackpot: boolean };
+        if (isJackpot) tier = 0;
+        else if (prize >= parseUnits("3", 6)) tier = 1;
+        else if (prize > 0n) tier = 2;
+        else {
+          // Check for free spin grant in same tx
+          const hasFreeGrant = receipt.logs.some(l => {
+            try { decodeEventLog({ abi: SPINMINT_ABI, eventName: "FreeSpinGranted", data: l.data, topics: l.topics }); return true; } catch { return false; }
+          });
+          // Check for rare NFT mint
+          const hasMint = receipt.logs.some(l => {
+            try { decodeEventLog({ abi: SPINMINT_ABI, eventName: "Minted", data: l.data, topics: l.topics }); return true; } catch { return false; }
+          });
+          tier = hasFreeGrant ? 5 : hasMint ? 3 : 4;
+        }
         break;
       } catch {}
     }
@@ -1158,22 +1067,18 @@ export default function SpinMintApp() {
                 </button>
               )}
 
-              <button onClick={async () => {
+              <button onClick={() => {
                 bootAudio();
-                try {
-                  const { sdk } = await import("@farcaster/miniapp-sdk");
-                  await sdk.actions.composeCast({
-                    text: "Just minted on SpinMint - $1 USDC to spin the wheel and win the jackpot!\n\nTry your luck:",
-                    embeds: [window.location.href],
-                  });
-                } catch { navigator.clipboard?.writeText(window.location.href); }
+                const text = encodeURIComponent("🎰 Just minted on SpinMint — $1 USDC to spin and win the jackpot!\n\nPlay onchain on Base:");
+                const url = encodeURIComponent(process.env.NEXT_PUBLIC_APP_URL ?? window.location.href);
+                window.open(`https://t.me/share/url?url=${url}&text=${text}`, "_blank");
               }} style={{
                 width: "100%", padding: "11px", borderRadius: 12,
                 background: "transparent", border: "1px solid #ffffff18",
                 color: "#ffffff55", fontSize: 10, letterSpacing: 3,
                 fontFamily: "'Space Mono',monospace", cursor: "pointer",
               }}>
-                CAST & EARN FREE SPIN
+                SHARE & EARN FREE SPIN
               </button>
             </>
           )}
@@ -1254,12 +1159,7 @@ export default function SpinMintApp() {
       )}
 
       {showCollectible && (
-        <CollectiblePanel
-          onClose={() => setShowCollectible(false)}
-          address={address}
-          allowance={allowance}
-          writeContractAsync={writeContractAsync}
-        />
+        <CollectiblePanel onClose={() => setShowCollectible(false)} />
       )}
     </>
   );

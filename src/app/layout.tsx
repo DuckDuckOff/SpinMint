@@ -1,27 +1,17 @@
 import type { Metadata } from "next";
 import { Providers } from "./providers";
+import TelegramInit from "./telegram-init";
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://spinmint.vercel.app";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://spinmint-tg.vercel.app";
 
 export const metadata: Metadata = {
   title: "SpinMint - Mint. Spin. Win.",
-  description: "Mint an NFT for $1 USDC and spin to win the jackpot on Farcaster.",
-  other: {
-    // Farcaster Mini App manifest
-    "fc:frame": JSON.stringify({
-      version: "next",
-      imageUrl: `${APP_URL}/og.png`,
-      button: {
-        title: "Spin Now",
-        action: {
-          type: "launch_frame",
-          name: "SpinMint",
-          url: APP_URL,
-          splashImageUrl: `${APP_URL}/splash.png`,
-          splashBackgroundColor: "#0a0a0f",
-        },
-      },
-    }),
+  description: "Spin to win real USDC. Earn $SPINMINT tokens. Collect Peppermint NFTs. All onchain on Base.",
+  openGraph: {
+    title: "SpinMint",
+    description: "Spin to win USDC onchain on Base",
+    url: APP_URL,
+    images: [`${APP_URL}/og.png`],
   },
 };
 
@@ -29,6 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body style={{ margin: 0, background: "#0a0a0f" }}>
+        <TelegramInit />
         <Providers>{children}</Providers>
       </body>
     </html>

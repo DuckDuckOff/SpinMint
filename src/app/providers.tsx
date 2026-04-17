@@ -1,27 +1,28 @@
 "use client";
 
-import { OnchainKitProvider } from "@coinbase/onchainkit";
-import { MiniKitProvider } from "@coinbase/onchainkit/minikit";
-import { base, baseSepolia } from "viem/chains";
 import { WagmiProvider, createConfig, http, fallback } from "wagmi";
+import { coinbaseWallet, walletConnect, injected } from "wagmi/connectors";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { farcasterMiniApp } from "@farcaster/miniapp-wagmi-connector";
+import { base } from "viem/chains";
 
-const chain = process.env.NEXT_PUBLIC_CHAIN === "mainnet" ? base : baseSepolia;
+const PROJECT_ID = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "";
 
-// Provide config upfront with farcasterMiniApp connector so AutoConnect
-// doesn't race against async MiniKit context loading
-// Put the target chain first so it becomes the default for new connections
 const wagmiConfig = createConfig({
-  chains: chain.id === base.id ? [base, baseSepolia] : [baseSepolia, base],
-  connectors: [farcasterMiniApp()],
+  chains: [base],
+  connectors: [
+    // Coinbase Smart Wallet — best UX for users without a wallet
+    coinbaseWallet({ appName: "SpinMint", preference: { options: "smartWalletOnly" } }),
+    // WalletConnect — MetaMask, Rainbow, etc.
+    ...(PROJECT_ID ? [walletConnect({ projectId: PROJECT_ID })] : []),
+    // Injected — MetaMask browser extension
+    injected(),
+  ],
   transports: {
     [base.id]: fallback([
       http("https://mainnet.base.org"),
       http("https://base.drpc.org"),
       http("https://base.llamarpc.com"),
     ]),
-    [baseSepolia.id]: http("https://sepolia.base.org"),
   },
 });
 
@@ -31,19 +32,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
-        <OnchainKitProvider
-          apiKey={process.env.NEXT_PUBLIC_CDP_CLIENT_API_KEY!}
-          chain={chain}
-          config={{
-            appearance: {
-              mode: "dark",
-            },
-          }}
-        >
-          <MiniKitProvider enabled={true}>
-            {children}
-          </MiniKitProvider>
-        </OnchainKitProvider>
+        {children}
       </QueryClientProvider>
     </WagmiProvider>
   );
