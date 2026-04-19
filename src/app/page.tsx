@@ -3,10 +3,12 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { traitsFromSeed, rarityScore, rarityLabel, RARITY_COLORS } from "../lib/traits";
 import { generateSVG } from "../lib/svgGenerator";
-import { useAccount, useWriteContract, useReadContract, useWaitForTransactionReceipt, useConnect, useConfig } from "wagmi";
+import { useReadContract, useWaitForTransactionReceipt, useConfig } from "wagmi";
 import { waitForTransactionReceipt } from "@wagmi/core";
-import { parseUnits, formatUnits, decodeEventLog } from "viem";
-import { SPINMINT_ABI } from "../lib/abi";
+import { parseUnits, formatUnits, decodeEventLog, isAddress } from "viem";
+import { base } from "viem/chains";
+import { SPINMINT_ABI, ERC20_ABI } from "../lib/abi";
+import { useTelegramWallet } from "../hooks/useTelegramWallet";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 const SPINMINT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}`;
@@ -17,19 +19,6 @@ const USDC_ADDRESS = (
     : "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
 ) as `0x${string}`;
 
-
-const ERC20_ABI = [
-  {
-    name: "approve", type: "function", stateMutability: "nonpayable",
-    inputs: [{ name: "spender", type: "address" }, { name: "amount", type: "uint256" }],
-    outputs: [{ name: "", type: "bool" }],
-  },
-  {
-    name: "allowance", type: "function", stateMutability: "view",
-    inputs: [{ name: "owner", type: "address" }, { name: "spender", type: "address" }],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-] as const;
 
 // ─── Prize config ─────────────────────────────────────────────────────────────
 const PRIZES = [
@@ -713,37 +702,113 @@ function CollectiblePanel({
   );
 }
 
+// ─── Withdraw Modal ───────────────────────────────────────────────────────────
+function WithdrawModal({ claimable, expiresAt, onClose, onWithdraw }: {
+  claimable: bigint;
+  expiresAt: bigint;
+  onClose: () => void;
+  onWithdraw: (to: `0x${string}`) => void;
+}) {
+  const [toAddr, setToAddr] = useState("");
+  const addrValid = isAddress(toAddr);
+  const daysLeft = expiresAt > 0n
+    ? Math.max(0, Math.ceil((Number(expiresAt) - Date.now() / 1000) / 86400))
+    : null;
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}
+      onClick={onClose}>
+      <div style={{ position: "absolute", inset: 0, background: "#00000099", backdropFilter: "blur(4px)" }} />
+      <div onClick={e => e.stopPropagation()} style={{
+        position: "relative", zIndex: 1,
+        background: "linear-gradient(170deg,#0f0f1e,#0a0a14)",
+        border: "1px solid #FFD70044", borderRadius: "20px 20px 0 0",
+        padding: "20px 16px 36px",
+      }}>
+        <div style={{ width: 40, height: 4, borderRadius: 2, background: "#ffffff33", margin: "0 auto 16px" }} />
+        <h2 style={{ fontFamily: "'Bebas Neue'", fontSize: 26, letterSpacing: 3, color: "#FFD700", marginBottom: 4 }}>
+          WITHDRAW WINNINGS
+        </h2>
+        <p style={{ fontSize: 28, fontFamily: "'Bebas Neue'", color: "#fff", marginBottom: 4 }}>
+          {parseFloat(formatUnits(claimable, 6)).toFixed(2)} USDC
+        </p>
+        {daysLeft !== null && (
+          <p style={{ fontSize: 9, color: daysLeft <= 1 ? "#FF6B35" : "#ffffff55", letterSpacing: 2, marginBottom: 16 }}>
+            {daysLeft <= 1 ? "⚠ EXPIRES IN LESS THAN 24H" : `EXPIRES IN ${daysLeft} DAYS`}
+          </p>
+        )}
+        <p style={{ fontSize: 9, color: "#ffffff55", letterSpacing: 1, marginBottom: 8 }}>
+          SEND TO ANY BASE WALLET ADDRESS
+        </p>
+        <input
+          value={toAddr}
+          onChange={e => setToAddr(e.target.value)}
+          placeholder="0x..."
+          style={{
+            width: "100%", padding: "12px", borderRadius: 10,
+            background: "#ffffff0a", border: `1px solid ${addrValid ? "#FFD700" : "#ffffff22"}`,
+            color: "#fff", fontSize: 11, fontFamily: "'Space Mono',monospace",
+            outline: "none", marginBottom: 12,
+          }}
+        />
+        <button
+          disabled={!addrValid}
+          onClick={() => onWithdraw(toAddr as `0x${string}`)}
+          style={{
+            width: "100%", padding: "14px", borderRadius: 12,
+            background: addrValid ? "#FFD700" : "#333",
+            border: "none", color: "#000",
+            fontFamily: "'Bebas Neue'", fontSize: 18, letterSpacing: 3,
+            cursor: addrValid ? "pointer" : "not-allowed",
+          }}
+        >
+          WITHDRAW NOW
+        </button>
+        <p style={{ fontSize: 8, color: "#ffffff22", textAlign: "center", marginTop: 10, letterSpacing: 1 }}>
+          Unclaimed winnings return to the jackpot pool after 7 days.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function SpinMintApp() {
   const wheelSize = useWheelSize();
-  const { address, connector } = useAccount();
-  const [mounted, setMounted]     = useState(false);
-  const [phase, setPhase]         = useState<Phase>("idle");
-  const [winTier, setWinTier]     = useState<number | null>(null);
+  const { address, walletClient } = useTelegramWallet();
+  const [mounted, setMounted]       = useState(false);
+  const [phase, setPhase]           = useState<Phase>("idle");
+  const [winTier, setWinTier]       = useState<number | null>(null);
   const [showReveal, setShowReveal] = useState(false);
-  const [txHash, setTxHash]       = useState<`0x${string}` | undefined>();
-  const [error, setError]         = useState<string | null>(null);
-  const [muted, setMuted]         = useState(false);
+  const [txHash, setTxHash]         = useState<`0x${string}` | undefined>();
+  const [error, setError]           = useState<string | null>(null);
+  const [muted, setMuted]           = useState(false);
   const [audioReady, setAudioReady] = useState(false);
   const [showCollectible, setShowCollectible] = useState(false);
+  const [showWithdraw, setShowWithdraw]       = useState(false);
+
 
   // Contract reads
   const { data: stats } = useReadContract({
     address: SPINMINT_ADDRESS, abi: SPINMINT_ABI, functionName: "getStats",
   });
+  const userAddr = address;
+
   const { data: userInfo } = useReadContract({
     address: SPINMINT_ADDRESS, abi: SPINMINT_ABI, functionName: "getUserInfo",
-    args: address ? [address] : undefined, query: { enabled: !!address },
+    args: userAddr ? [userAddr] : undefined, query: { enabled: !!userAddr },
   });
-  const { data: allowance } = useReadContract({
+  const { data: allowance, refetch: refetchAllowance } = useReadContract({
     address: USDC_ADDRESS, abi: ERC20_ABI, functionName: "allowance",
-    args: address ? [address, SPINMINT_ADDRESS] : undefined, query: { enabled: !!address },
+    args: userAddr ? [userAddr, SPINMINT_ADDRESS] : undefined, query: { enabled: !!userAddr },
+  });
+  const { data: claimableData, refetch: refetchClaimable } = useReadContract({
+    address: SPINMINT_ADDRESS, abi: SPINMINT_ABI, functionName: "getClaimable",
+    args: userAddr ? [userAddr] : undefined, query: { enabled: !!userAddr },
   });
 
   const config = useConfig();
-  const { connectors, connect } = useConnect();
-  const { writeContractAsync } = useWriteContract();
-const { data: receipt } = useWaitForTransactionReceipt({
+  const { data: receipt } = useWaitForTransactionReceipt({
     hash: txHash,
     chainId: CHAIN_ID,
     pollingInterval: 2000,
@@ -780,6 +845,7 @@ const { data: receipt } = useWaitForTransactionReceipt({
     }
     setWinTier(tier);
     setPhase("spinning");
+    refetchClaimable();
   }, [receipt]);
 
   // Boot audio on first interaction
@@ -805,9 +871,26 @@ const { data: receipt } = useWaitForTransactionReceipt({
     }
   };
 
-  // Write with explicit connector + chainId so wagmi skips the getChainId probe
-  const safeWrite = async (args: Parameters<typeof writeContractAsync>[0]) => {
-    return writeContractAsync({ ...args, connector, chainId: CHAIN_ID });
+  const safeWrite = async (args: { address: `0x${string}`; abi: typeof SPINMINT_ABI | typeof ERC20_ABI; functionName: string; args?: readonly unknown[] }) => {
+    if (!walletClient) throw new Error("Wallet not connected");
+    return walletClient.writeContract({ ...args, chain: base } as Parameters<typeof walletClient.writeContract>[0]);
+  };
+
+  const handleWithdraw = async (to: `0x${string}`) => {
+    setShowWithdraw(false);
+    setError(null);
+    try {
+      setPhase("minting");
+      const hash = await safeWrite({
+        address: SPINMINT_ADDRESS, abi: SPINMINT_ABI, functionName: "claim", args: [to],
+      });
+      await waitForTransactionReceipt(config, { hash, chainId: CHAIN_ID });
+      refetchClaimable();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message.slice(0, 100) : "Withdraw failed");
+    } finally {
+      setPhase("idle");
+    }
   };
 
   const handleMint = async () => {
@@ -854,12 +937,16 @@ const { data: receipt } = useWaitForTransactionReceipt({
   const onSpinEnd = () => { setPhase("reveal"); setShowReveal(true); if (winTier !== null) playWin(winTier); };
   const onCloseReveal = () => { setShowReveal(false); setPhase("idle"); setWinTier(null); setTxHash(undefined); };
 
-  const jackpot    = stats ? stats[0] : 0n;
-  const totalMints = stats ? stats[1] : 0n;
-  const userStreak = userInfo ? userInfo[0] : 0n;
-  const hasFree    = userInfo ? userInfo[1] : false;
-  const isSpinning = phase === "spinning";
-  const isBusy     = phase === "approving" || phase === "minting";
+  const jackpot       = stats ? stats[0] : 0n;
+  const totalMints    = stats ? stats[1] : 0n;
+  const userStreak    = userInfo ? userInfo[0] : 0n;
+  const hasFree       = userInfo ? userInfo[1] : false;
+  const claimableAmt  = claimableData ? claimableData[0] : 0n;
+  const claimableExp  = claimableData ? claimableData[1] : 0n;
+  const hasWinnings   = claimableAmt > 0n;
+  const isSpinning    = phase === "spinning";
+  const isBusy        = phase === "approving" || phase === "minting";
+  const isConnected   = !!address;
 
   const btnLabel = {
     idle:      "MINT & SPIN  -  $1 USDC",
@@ -1002,7 +1089,7 @@ const { data: receipt } = useWaitForTransactionReceipt({
         </div>
 
         {/* User stats */}
-        {mounted && address && (
+        {mounted && isConnected && (
           <div style={{ display: "flex", gap: "6px", width: "100%", flexShrink: 0 }}>
             {[
               { label: "STREAK", val: `${userStreak.toString()}`, color: "#FF6B35" },
@@ -1022,6 +1109,32 @@ const { data: receipt } = useWaitForTransactionReceipt({
           </div>
         )}
 
+        {/* Claimable winnings banner */}
+        {mounted && isConnected && hasWinnings && (
+          <div
+            onClick={() => setShowWithdraw(true)}
+            style={{
+              width: "100%", borderRadius: 12, padding: "10px 14px",
+              background: "linear-gradient(135deg,#1a2a0a,#1e3a0a)",
+              border: "1px solid #2ED57366", cursor: "pointer",
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+            }}
+          >
+            <div>
+              <p style={{ fontSize: 8, color: "#2ED57399", letterSpacing: 3 }}>YOUR WINNINGS</p>
+              <p style={{ fontFamily: "'Bebas Neue'", fontSize: 28, color: "#2ED573", textShadow: "0 0 14px #2ED573", lineHeight: 1 }}>
+                {parseFloat(formatUnits(claimableAmt, 6)).toFixed(2)} USDC
+              </p>
+            </div>
+            <div style={{
+              background: "#2ED573", color: "#000", padding: "8px 14px",
+              borderRadius: 8, fontFamily: "'Bebas Neue'", fontSize: 14, letterSpacing: 2,
+            }}>
+              WITHDRAW
+            </div>
+          </div>
+        )}
+
         {/* Error */}
         {error && (
           <div style={{ width: "100%", borderRadius: 10, padding: "6px 10px", background: "#ff000011", border: "1px solid #ff000033", fontSize: 9, color: "#ff6b6b", flexShrink: 0 }}>
@@ -1029,11 +1142,11 @@ const { data: receipt } = useWaitForTransactionReceipt({
           </div>
         )}
 
-        {/* CTA — sticky to bottom */}
+        {/* CTA */}
         <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 6, flexShrink: 0, paddingBottom: 10 }}>
-          {!mounted ? null : !address ? (
+          {!mounted ? null : !isConnected ? (
             <button
-              onClick={() => { bootAudio(); connect({ connector: connectors[0], chainId: CHAIN_ID }); }}
+              onClick={() => { bootAudio(); }}
               className="shimmer-btn"
               style={{
                 width: "100%", padding: "16px", borderRadius: 14,
@@ -1042,7 +1155,7 @@ const { data: receipt } = useWaitForTransactionReceipt({
                 fontSize: 20, letterSpacing: 4, color: "#000",
               }}
             >
-              CONNECT WALLET
+              PLAY WITH TELEGRAM
             </button>
           ) : (
             <>
@@ -1148,6 +1261,15 @@ const { data: receipt } = useWaitForTransactionReceipt({
 
       {showCollectible && (
         <CollectiblePanel onClose={() => setShowCollectible(false)} />
+      )}
+
+      {showWithdraw && claimableData && (
+        <WithdrawModal
+          claimable={claimableAmt}
+          expiresAt={claimableExp}
+          onClose={() => setShowWithdraw(false)}
+          onWithdraw={handleWithdraw}
+        />
       )}
       </div>{/* end scroll-root */}
     </>
