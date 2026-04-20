@@ -27,7 +27,7 @@ export function useTelegramWallet() {
         const client = createWalletClient({
           account,
           chain: base,
-          transport: http("https://mainnet.base.org"),
+          transport: http("https://base.llamarpc.com"),
         });
         setAddress(account.address);
         setWalletClient(client);
