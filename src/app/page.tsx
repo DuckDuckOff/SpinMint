@@ -315,6 +315,19 @@ function SpinWheel({ spinning, winTier, onSpinEnd, onTick, size }: {
 
   useEffect(() => { draw(angle, litSeg); }, [angle, litSeg, draw]);
 
+  // iOS WebView sometimes silently drops the first canvas paint — force a repaint after mount
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        canvas.width = canvas.width; // resets + activates the canvas layer
+        draw(0, -1);
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (!spinning) return;
     const slice = (2 * Math.PI) / SEGMENTS.length;
@@ -374,6 +387,7 @@ function SpinWheel({ spinning, winTier, onSpinEnd, onTick, size }: {
         <canvas ref={canvasRef} width={size} height={size} style={{
           borderRadius: "50%",
           display: "block",
+          transform: "translateZ(0)",
         }} />
       </div>
     </div>
