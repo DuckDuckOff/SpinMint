@@ -789,7 +789,7 @@ function WithdrawModal({ claimable, expiresAt, onClose, onWithdraw }: {
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function SpinMintApp() {
   const wheelSize = useWheelSize();
-  const { address, walletClient } = useTelegramWallet();
+  const { address, walletClient, loading: walletLoading } = useTelegramWallet();
   const [mounted, setMounted]       = useState(false);
   const [phase, setPhase]           = useState<Phase>("idle");
   const [winTier, setWinTier]       = useState<number | null>(null);
@@ -1158,19 +1158,24 @@ export default function SpinMintApp() {
 
         {/* CTA */}
         <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 6, flexShrink: 0, paddingBottom: 10 }}>
-          {!mounted ? null : !isConnected ? (
-            <button
-              onClick={() => { bootAudio(); }}
-              className="shimmer-btn"
-              style={{
-                width: "100%", padding: "16px", borderRadius: 14,
-                border: "none", cursor: "pointer",
-                fontFamily: "'Bebas Neue',sans-serif",
-                fontSize: 20, letterSpacing: 4, color: "#000",
-              }}
-            >
-              PLAY WITH TELEGRAM
-            </button>
+          {!mounted ? null : walletLoading ? (
+            <div style={{
+              width: "100%", padding: "16px", borderRadius: 14,
+              background: "#ffffff0a", border: "1px solid #ffffff22",
+              textAlign: "center", fontFamily: "'Space Mono',monospace",
+              fontSize: 11, color: "#ffffff55", letterSpacing: 3,
+            }}>
+              CONNECTING WALLET...
+            </div>
+          ) : !isConnected ? (
+            <div style={{
+              width: "100%", padding: "16px", borderRadius: 14,
+              background: "#ff000011", border: "1px solid #ff000033",
+              textAlign: "center", fontFamily: "'Space Mono',monospace",
+              fontSize: 10, color: "#ff6b6b", letterSpacing: 2,
+            }}>
+              OPEN IN TELEGRAM TO PLAY
+            </div>
           ) : (
             <>
               <button

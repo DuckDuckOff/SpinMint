@@ -6,6 +6,7 @@ import { base } from "viem/chains";
 
 export const wagmiConfig = createConfig({
   chains: [base],
+  multiInjectedProviderDiscovery: false,
   transports: {
     [base.id]: fallback([
       http("https://mainnet.base.org"),
