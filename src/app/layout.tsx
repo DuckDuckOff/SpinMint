@@ -18,6 +18,20 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        {/* Block injected wallets (Coinbase, MetaMask etc) from auto-connecting.
+            This app uses an embedded server-derived wallet — window.ethereum is unused. */}
+        <script dangerouslySetInnerHTML={{ __html: `
+          try {
+            Object.defineProperty(window, 'ethereum', {
+              get: function() { return undefined; },
+              set: function() {},
+              configurable: false,
+              enumerable: false,
+            });
+          } catch(e) {}
+        `}} />
+      </head>
       <body style={{ margin: 0, background: "#0a0a0f" }}>
         <TelegramInit />
         <Providers>{children}</Providers>
