@@ -3,11 +3,10 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { traitsFromSeed, rarityScore, rarityLabel, RARITY_COLORS } from "../lib/traits";
 import { generateSVG } from "../lib/svgGenerator";
-import { useReadContract, useWaitForTransactionReceipt, useConfig } from "wagmi";
-import { waitForTransactionReceipt } from "@wagmi/core";
 import { parseUnits, formatUnits, decodeEventLog, isAddress } from "viem";
 import { base } from "viem/chains";
 import { SPINMINT_ABI, ERC20_ABI } from "../lib/abi";
+import { publicClient } from "../lib/publicClient";
 import { useTelegramWallet } from "../hooks/useTelegramWallet";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -802,32 +801,52 @@ export default function SpinMintApp() {
   const [showWithdraw, setShowWithdraw]       = useState(false);
 
 
-  // Contract reads
-  const { data: stats } = useReadContract({
-    address: SPINMINT_ADDRESS, abi: SPINMINT_ABI, functionName: "getStats",
-  });
+  // Contract reads via viem publicClient (no wagmi — avoids EIP-6963 wallet detection)
   const userAddr = address;
+  const [stats, setStats]             = useState<readonly [bigint, bigint] | undefined>();
+  const [userInfo, setUserInfo]       = useState<readonly [bigint, boolean] | undefined>();
+  const [allowance, setAllowance]     = useState<bigint | undefined>();
+  const [claimableData, setClaimable] = useState<readonly [bigint, bigint] | undefined>();
+  const [receipt, setReceipt]         = useState<Awaited<ReturnType<typeof publicClient.waitForTransactionReceipt>> | undefined>();
 
-  const { data: userInfo } = useReadContract({
-    address: SPINMINT_ADDRESS, abi: SPINMINT_ABI, functionName: "getUserInfo",
-    args: userAddr ? [userAddr] : undefined, query: { enabled: !!userAddr },
-  });
-  const { data: allowance, refetch: refetchAllowance } = useReadContract({
-    address: USDC_ADDRESS, abi: ERC20_ABI, functionName: "allowance",
-    args: userAddr ? [userAddr, SPINMINT_ADDRESS] : undefined, query: { enabled: !!userAddr },
-  });
-  const { data: claimableData, refetch: refetchClaimable } = useReadContract({
-    address: SPINMINT_ADDRESS, abi: SPINMINT_ABI, functionName: "getClaimable",
-    args: userAddr ? [userAddr] : undefined, query: { enabled: !!userAddr },
-  });
+  const refetchAllowance = useCallback(() => {
+    if (!userAddr) return;
+    publicClient.readContract({ address: USDC_ADDRESS, abi: ERC20_ABI, functionName: "allowance", args: [userAddr, SPINMINT_ADDRESS] })
+      .then(v => setAllowance(v as bigint)).catch(() => {});
+  }, [userAddr]);
 
-  const config = useConfig();
-  const { data: receipt } = useWaitForTransactionReceipt({
-    hash: txHash,
-    chainId: CHAIN_ID,
-    pollingInterval: 2000,
-    query: { enabled: !!txHash },
-  });
+  const refetchClaimable = useCallback(() => {
+    if (!userAddr) return;
+    publicClient.readContract({ address: SPINMINT_ADDRESS, abi: SPINMINT_ABI, functionName: "getClaimable", args: [userAddr] })
+      .then(v => setClaimable(v as readonly [bigint, bigint])).catch(() => {});
+  }, [userAddr]);
+
+  // Poll stats every 30s
+  useEffect(() => {
+    if (!SPINMINT_ADDRESS) return;
+    const load = () => publicClient.readContract({ address: SPINMINT_ADDRESS, abi: SPINMINT_ABI, functionName: "getStats" })
+      .then(v => setStats(v as readonly [bigint, bigint])).catch(() => {});
+    load();
+    const id = setInterval(load, 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Load user-specific data when wallet connects
+  useEffect(() => {
+    if (!userAddr) return;
+    publicClient.readContract({ address: SPINMINT_ADDRESS, abi: SPINMINT_ABI, functionName: "getUserInfo", args: [userAddr] })
+      .then(v => setUserInfo(v as readonly [bigint, boolean])).catch(() => {});
+    refetchAllowance();
+    refetchClaimable();
+  }, [userAddr, refetchAllowance, refetchClaimable]);
+
+  // Wait for tx receipt
+  useEffect(() => {
+    if (!txHash) return;
+    setReceipt(undefined);
+    publicClient.waitForTransactionReceipt({ hash: txHash, pollingInterval: 2000 })
+      .then(setReceipt).catch(() => {});
+  }, [txHash]);
 
   // Mounted guard — prevents SSR/client hydration mismatch for wallet-dependent UI
   useEffect(() => { setMounted(true); }, []);
@@ -898,7 +917,7 @@ export default function SpinMintApp() {
       const hash = await safeWrite({
         address: SPINMINT_ADDRESS, abi: SPINMINT_ABI, functionName: "claim", args: [to],
       });
-      await waitForTransactionReceipt(config, { hash, chainId: CHAIN_ID });
+      await publicClient.waitForTransactionReceipt({ hash, pollingInterval: 2000 });
       refetchClaimable();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message.slice(0, 100) : "Withdraw failed");
@@ -919,7 +938,7 @@ export default function SpinMintApp() {
           args: [SPINMINT_ADDRESS, parseUnits("1", 6)],
         });
         // Wait for approve to confirm on-chain before spending the allowance
-        await waitForTransactionReceipt(config, { hash: approveHash, chainId: CHAIN_ID });
+        await publicClient.waitForTransactionReceipt({ hash: approveHash, pollingInterval: 2000 });
       }
       setPhase("minting");
       const hash = await safeWrite({
