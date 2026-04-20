@@ -366,13 +366,13 @@ function SpinWheel({ spinning, winTier, onSpinEnd, onTick, size }: {
         transform: pulsing ? "scale(1.045)" : "scale(1)",
         transition: pulsing ? "none" : "transform 0.12s ease-out",
         willChange: "transform",
+        borderRadius: "50%",
+        boxShadow: spinning
+          ? "0 0 32px #FFD70077, 0 0 8px #ffffff44"
+          : "0 0 12px #FFD70033",
       }}>
         <canvas ref={canvasRef} width={size} height={size} style={{
           borderRadius: "50%",
-          filter: spinning
-            ? "drop-shadow(0 0 32px #FFD70077) drop-shadow(0 0 8px #fff4)"
-            : "drop-shadow(0 0 12px #FFD70033)",
-          transition: "filter 0.4s",
           display: "block",
         }} />
       </div>
