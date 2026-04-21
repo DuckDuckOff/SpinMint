@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Providers } from "./providers";
 import TelegramInit from "./telegram-init";
 
@@ -18,10 +19,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <head>
-        {/* Block injected wallets (Coinbase, MetaMask etc) from auto-connecting.
-            This app uses an embedded server-derived wallet — window.ethereum is unused. */}
-        <script dangerouslySetInnerHTML={{ __html: `
+      <body style={{ margin: 0, background: "#0a0a0f" }}>
+        {/* Runs before React hydration — freezes window.ethereum so injected
+            wallets (Coinbase, MetaMask) cannot announce or auto-connect */}
+        <Script id="block-injected-wallets" strategy="beforeInteractive">{`
           try {
             Object.defineProperty(window, 'ethereum', {
               get: function() { return undefined; },
@@ -29,10 +30,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               configurable: false,
               enumerable: false,
             });
+            window.web3 = undefined;
           } catch(e) {}
-        `}} />
-      </head>
-      <body style={{ margin: 0, background: "#0a0a0f" }}>
+        `}</Script>
         <TelegramInit />
         <Providers>{children}</Providers>
       </body>
