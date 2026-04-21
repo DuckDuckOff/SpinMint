@@ -803,8 +803,8 @@ export default function SpinMintApp() {
 
   // Contract reads via viem publicClient (no wagmi — avoids EIP-6963 wallet detection)
   const userAddr = address;
-  const [stats, setStats]             = useState<readonly [bigint, bigint] | undefined>();
-  const [userInfo, setUserInfo]       = useState<readonly [bigint, boolean] | undefined>();
+  const [stats, setStats]             = useState<readonly [bigint, bigint, bigint] | undefined>();
+  const [userInfo, setUserInfo]       = useState<readonly [bigint, boolean, bigint, bigint] | undefined>();
   const [allowance, setAllowance]     = useState<bigint | undefined>();
   const [claimableData, setClaimable] = useState<readonly [bigint, bigint] | undefined>();
   const [receipt, setReceipt]         = useState<Awaited<ReturnType<typeof publicClient.waitForTransactionReceipt>> | undefined>();
@@ -825,7 +825,7 @@ export default function SpinMintApp() {
   useEffect(() => {
     if (!SPINMINT_ADDRESS) return;
     const load = () => publicClient.readContract({ address: SPINMINT_ADDRESS, abi: SPINMINT_ABI, functionName: "getStats" })
-      .then(v => setStats(v as readonly [bigint, bigint])).catch(() => {});
+      .then(v => setStats(v as unknown as readonly [bigint, bigint, bigint])).catch(() => {});
     load();
     const id = setInterval(load, 30_000);
     return () => clearInterval(id);
@@ -835,7 +835,7 @@ export default function SpinMintApp() {
   useEffect(() => {
     if (!userAddr) return;
     publicClient.readContract({ address: SPINMINT_ADDRESS, abi: SPINMINT_ABI, functionName: "getUserInfo", args: [userAddr] })
-      .then(v => setUserInfo(v as readonly [bigint, boolean])).catch(() => {});
+      .then(v => setUserInfo(v as unknown as readonly [bigint, boolean, bigint, bigint])).catch(() => {});
     refetchAllowance();
     refetchClaimable();
   }, [userAddr, refetchAllowance, refetchClaimable]);
