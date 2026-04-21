@@ -9,6 +9,7 @@ const nextConfig = {
         net: false,
         tls: false,
         crypto: false,
+        ws: false,
       };
     }
     return config;
