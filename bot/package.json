@@ -1,0 +1,14 @@
+{
+  "name": "spinmint-promo-bot",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "@ton/ton": "^15.1.0",
+    "telegraf": "^4.16.3"
+  }
+}
