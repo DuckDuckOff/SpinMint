@@ -906,7 +906,7 @@ export default function SpinMintApp() {
 
   const safeWrite = async (args: { address: `0x${string}`; abi: typeof SPINMINT_ABI | typeof ERC20_ABI; functionName: string; args?: readonly unknown[] }) => {
     if (!walletClient) throw new Error("Wallet not connected");
-    return walletClient.writeContract({ ...args, chain: base } as Parameters<typeof walletClient.writeContract>[0]);
+    return walletClient.writeContract({ ...args, chain: base } as unknown as Parameters<typeof walletClient.writeContract>[0]);
   };
 
   const handleWithdraw = async (to: `0x${string}`) => {
