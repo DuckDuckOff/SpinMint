@@ -1123,23 +1123,40 @@ export default function SpinMintApp() {
 
         {/* User stats */}
         {mounted && isConnected && (
-          <div style={{ display: "flex", gap: "6px", width: "100%", flexShrink: 0 }}>
-            {[
-              { label: "STREAK", val: `${userStreak.toString()}`, color: "#FF6B35" },
-              { label: "FREE SPIN", val: hasFree ? "READY!" : "–", color: hasFree ? "#4ECDC4" : "#ffffff22" },
-            ].map(({ label, val, color }) => (
-              <div key={label} style={{
-                flex: 1, borderRadius: 10, padding: "5px 10px",
-                background: "#ffffff07", border: `1px solid ${color}33`,
-                textAlign: "center",
-              }}>
-                <p style={{ fontSize: 7, color: "#ffffff44", letterSpacing: 2 }}>{label}</p>
-                <p style={{ fontSize: 18, color, fontFamily: "'Bebas Neue'", textShadow: `0 0 10px ${color}`, letterSpacing: 2 }}>
-                  {val}
-                </p>
-              </div>
-            ))}
-          </div>
+          <>
+            <div style={{ display: "flex", gap: "6px", width: "100%", flexShrink: 0 }}>
+              {[
+                { label: "STREAK", val: `${userStreak.toString()}`, color: "#FF6B35" },
+                { label: "FREE SPIN", val: hasFree ? "READY!" : "–", color: hasFree ? "#4ECDC4" : "#ffffff22" },
+              ].map(({ label, val, color }) => (
+                <div key={label} style={{
+                  flex: 1, borderRadius: 10, padding: "5px 10px",
+                  background: "#ffffff07", border: `1px solid ${color}33`,
+                  textAlign: "center",
+                }}>
+                  <p style={{ fontSize: 7, color: "#ffffff44", letterSpacing: 2 }}>{label}</p>
+                  <p style={{ fontSize: 18, color, fontFamily: "'Bebas Neue'", textShadow: `0 0 10px ${color}`, letterSpacing: 2 }}>
+                    {val}
+                  </p>
+                </div>
+              ))}
+            </div>
+            {/* Wallet address — tap to copy */}
+            <div
+              onClick={() => { navigator.clipboard?.writeText(address!).catch(() => {}); }}
+              style={{
+                width: "100%", borderRadius: 8, padding: "5px 10px",
+                background: "#ffffff05", border: "1px solid #ffffff0f",
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                cursor: "pointer",
+              }}
+            >
+              <p style={{ fontSize: 7, color: "#ffffff33", letterSpacing: 2 }}>YOUR WALLET</p>
+              <p style={{ fontSize: 9, color: "#ffffff44", fontFamily: "'Space Mono',monospace", letterSpacing: 1 }}>
+                {address!.slice(0, 6)}…{address!.slice(-4)}
+              </p>
+            </div>
+          </>
         )}
 
         {/* Claimable winnings banner */}
