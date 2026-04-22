@@ -19,9 +19,12 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        {/* Official Telegram Mini App script — must load before page scripts
+            so window.Telegram.WebApp.initData is available synchronously */}
+        <script src="https://telegram.org/js/telegram-web-app.js" />
+      </head>
       <body style={{ margin: 0, background: "#0a0a0f" }}>
-        {/* Runs before React hydration — freezes window.ethereum so injected
-            wallets (Coinbase, MetaMask) cannot announce or auto-connect */}
         <Script id="block-injected-wallets" strategy="beforeInteractive">{`
           try {
             Object.defineProperty(window, 'ethereum', {

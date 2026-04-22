@@ -12,28 +12,41 @@ export function useTelegramWallet() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const initData = (window as any).Telegram?.WebApp?.initData;
-    if (!initData) return;
+    function init() {
+      const tg = (window as any).Telegram?.WebApp;
+      const initData = tg?.initData;
+      if (!initData) return false;
 
-    setLoading(true);
-    fetch("/api/wallet", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ initData }),
-    })
-      .then((r) => r.json())
-      .then(({ privateKey }) => {
-        const account = privateKeyToAccount(privateKey as `0x${string}`);
-        const client = createWalletClient({
-          account,
-          chain: base,
-          transport: http("https://base.llamarpc.com"),
-        });
-        setAddress(account.address);
-        setWalletClient(client);
+      setLoading(true);
+      fetch("/api/wallet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ initData }),
       })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+        .then((r) => r.json())
+        .then(({ privateKey }) => {
+          if (!privateKey) return;
+          const account = privateKeyToAccount(privateKey as `0x${string}`);
+          const client = createWalletClient({
+            account,
+            chain: base,
+            transport: http("https://base.llamarpc.com"),
+          });
+          setAddress(account.address);
+          setWalletClient(client);
+        })
+        .catch(() => {})
+        .finally(() => setLoading(false));
+
+      return true;
+    }
+
+    // Try immediately — if Telegram script already loaded, this works
+    if (init()) return;
+
+    // Otherwise wait 300ms for telegram-web-app.js to set window.Telegram
+    const t = setTimeout(() => { init(); }, 300);
+    return () => clearTimeout(t);
   }, []);
 
   return { address, walletClient, loading };
