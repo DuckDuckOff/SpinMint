@@ -7,9 +7,9 @@ import { base } from "viem/chains";
 const rpcUrl = process.env.BASE_RPC_URL ?? "https://base.llamarpc.com";
 const publicClient = createPublicClient({ chain: base, transport: http(rpcUrl) });
 
-// Top up if balance below 0.0005 ETH; send 0.001 ETH (~1000+ spins worth of gas on Base)
-const GAS_THRESHOLD = parseEther("0.0005");
-const GAS_TOPUP     = parseEther("0.001");
+// Top up if balance below 0.000005 ETH; send 0.00002 ETH (~10 spins on Base, ~$0.06/user)
+const GAS_THRESHOLD = parseEther("0.000005");
+const GAS_TOPUP     = parseEther("0.00002");
 
 function verifyInitData(initData: string, botToken: string): Record<string, string> | null {
   const params = new URLSearchParams(initData);
