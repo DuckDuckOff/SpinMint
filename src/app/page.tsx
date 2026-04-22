@@ -3,20 +3,15 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { traitsFromSeed, rarityScore, rarityLabel, RARITY_COLORS } from "../lib/traits";
 import { generateSVG } from "../lib/svgGenerator";
-import { parseUnits, formatUnits, decodeEventLog, isAddress } from "viem";
-import { base } from "viem/chains";
-import { SPINMINT_ABI, ERC20_ABI } from "../lib/abi";
-import { publicClient } from "../lib/publicClient";
-import { useTelegramWallet } from "../hooks/useTelegramWallet";
+import { useTonConnectUI, useTonAddress, useTonWallet } from "@tonconnect/ui-react";
+import { Address, beginCell, toNano, fromNano } from "@ton/ton";
+import { tonClient } from "../lib/tonClient";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
-const SPINMINT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}`;
-const CHAIN_ID = process.env.NEXT_PUBLIC_CHAIN === "mainnet" ? 8453 : 84532;
-const USDC_ADDRESS = (
-  process.env.NEXT_PUBLIC_CHAIN === "mainnet"
-    ? "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-    : "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
-) as `0x${string}`;
+const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ?? "";
+// Spin opcode matches Tact message(0x7370696e) Spin {}
+const SPIN_PAYLOAD = beginCell().storeUint(0x7370696e, 32).endCell().toBoc().toString("base64");
+const CLAIM_PAYLOAD = beginCell().storeUint(0x636c6169, 32).endCell().toBoc().toString("base64");
 
 
 // ─── Prize config ─────────────────────────────────────────────────────────────
@@ -35,7 +30,7 @@ const SEGMENTS = [
   PRIZES[3], PRIZES[4], PRIZES[1], PRIZES[5],
 ];
 
-type Phase = "idle" | "approving" | "minting" | "spinning" | "reveal";
+type Phase = "idle" | "minting" | "spinning" | "reveal";
 
 // ─── Audio engine ─────────────────────────────────────────────────────────────
 let _ctx: AudioContext | null = null;
@@ -135,8 +130,8 @@ function startAmbient() {
 function stopAmbient() { _ambientStop?.(); _ambientStop = null; }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function fmt(usdc: bigint) {
-  return `$${parseFloat(formatUnits(usdc, 6)).toFixed(2)}`;
+function fmt(nanotons: bigint) {
+  return `${parseFloat(fromNano(nanotons)).toFixed(2)} TON`;
 }
 
 function getSegUnderPointer(angle: number): number {
@@ -716,18 +711,11 @@ function CollectiblePanel({
 }
 
 // ─── Withdraw Modal ───────────────────────────────────────────────────────────
-function WithdrawModal({ claimable, expiresAt, onClose, onWithdraw }: {
+function WithdrawModal({ claimable, onClose, onWithdraw }: {
   claimable: bigint;
-  expiresAt: bigint;
   onClose: () => void;
-  onWithdraw: (to: `0x${string}`) => void;
+  onWithdraw: () => void;
 }) {
-  const [toAddr, setToAddr] = useState("");
-  const addrValid = isAddress(toAddr);
-  const daysLeft = expiresAt > 0n
-    ? Math.max(0, Math.ceil((Number(expiresAt) - Date.now() / 1000) / 86400))
-    : null;
-
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}
       onClick={onClose}>
@@ -740,42 +728,20 @@ function WithdrawModal({ claimable, expiresAt, onClose, onWithdraw }: {
       }}>
         <div style={{ width: 40, height: 4, borderRadius: 2, background: "#ffffff33", margin: "0 auto 16px" }} />
         <h2 style={{ fontFamily: "'Bebas Neue'", fontSize: 26, letterSpacing: 3, color: "#FFD700", marginBottom: 4 }}>
-          WITHDRAW WINNINGS
+          CLAIM WINNINGS
         </h2>
         <p style={{ fontSize: 28, fontFamily: "'Bebas Neue'", color: "#fff", marginBottom: 4 }}>
-          {parseFloat(formatUnits(claimable, 6)).toFixed(2)} USDC
+          {parseFloat(fromNano(claimable)).toFixed(2)} TON
         </p>
-        {daysLeft !== null && (
-          <p style={{ fontSize: 9, color: daysLeft <= 1 ? "#FF6B35" : "#ffffff55", letterSpacing: 2, marginBottom: 16 }}>
-            {daysLeft <= 1 ? "⚠ EXPIRES IN LESS THAN 24H" : `EXPIRES IN ${daysLeft} DAYS`}
-          </p>
-        )}
-        <p style={{ fontSize: 9, color: "#ffffff55", letterSpacing: 1, marginBottom: 8 }}>
-          SEND TO ANY BASE WALLET ADDRESS
+        <p style={{ fontSize: 9, color: "#ffffff55", letterSpacing: 1, marginBottom: 16 }}>
+          SENT DIRECTLY TO YOUR CONNECTED WALLET
         </p>
-        <input
-          value={toAddr}
-          onChange={e => setToAddr(e.target.value)}
-          placeholder="0x..."
-          style={{
-            width: "100%", padding: "12px", borderRadius: 10,
-            background: "#ffffff0a", border: `1px solid ${addrValid ? "#FFD700" : "#ffffff22"}`,
-            color: "#fff", fontSize: 11, fontFamily: "'Space Mono',monospace",
-            outline: "none", marginBottom: 12,
-          }}
-        />
-        <button
-          disabled={!addrValid}
-          onClick={() => onWithdraw(toAddr as `0x${string}`)}
-          style={{
-            width: "100%", padding: "14px", borderRadius: 12,
-            background: addrValid ? "#FFD700" : "#333",
-            border: "none", color: "#000",
-            fontFamily: "'Bebas Neue'", fontSize: 18, letterSpacing: 3,
-            cursor: addrValid ? "pointer" : "not-allowed",
-          }}
-        >
-          WITHDRAW NOW
+        <button onClick={onWithdraw} style={{
+          width: "100%", padding: "14px", borderRadius: 12,
+          background: "#FFD700", border: "none", color: "#000",
+          fontFamily: "'Bebas Neue'", fontSize: 18, letterSpacing: 3, cursor: "pointer",
+        }}>
+          CLAIM NOW
         </button>
         <p style={{ fontSize: 8, color: "#ffffff22", textAlign: "center", marginTop: 10, letterSpacing: 1 }}>
           Unclaimed winnings return to the jackpot pool after 7 days.
@@ -788,98 +754,59 @@ function WithdrawModal({ claimable, expiresAt, onClose, onWithdraw }: {
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function SpinMintApp() {
   const wheelSize = useWheelSize();
-  const { address, walletClient, loading: walletLoading } = useTelegramWallet();
+  const [tonConnectUI] = useTonConnectUI();
+  const address    = useTonAddress();
+  const wallet     = useTonWallet();
+
   const [mounted, setMounted]       = useState(false);
   const [phase, setPhase]           = useState<Phase>("idle");
   const [winTier, setWinTier]       = useState<number | null>(null);
   const [showReveal, setShowReveal] = useState(false);
-  const [txHash, setTxHash]         = useState<`0x${string}` | undefined>();
   const [error, setError]           = useState<string | null>(null);
   const [muted, setMuted]           = useState(false);
   const [audioReady, setAudioReady] = useState(false);
   const [showCollectible, setShowCollectible] = useState(false);
   const [showWithdraw, setShowWithdraw]       = useState(false);
 
+  // TON contract state
+  const [jackpot, setJackpot]         = useState<bigint>(0n);
+  const [totalSpins, setTotalSpins]   = useState<bigint>(0n);
+  const [claimableAmt, setClaimable]  = useState<bigint>(0n);
 
-  // Contract reads via viem publicClient (no wagmi — avoids EIP-6963 wallet detection)
-  const userAddr = address;
-  const [stats, setStats]             = useState<readonly [bigint, bigint, bigint] | undefined>();
-  const [userInfo, setUserInfo]       = useState<readonly [bigint, boolean, bigint, bigint] | undefined>();
-  const [allowance, setAllowance]     = useState<bigint | undefined>();
-  const [claimableData, setClaimable] = useState<readonly [bigint, bigint] | undefined>();
-  const [receipt, setReceipt]         = useState<Awaited<ReturnType<typeof publicClient.waitForTransactionReceipt>> | undefined>();
+  const refetchClaimable = useCallback(async () => {
+    if (!address || !CONTRACT_ADDRESS) return;
+    try {
+      const res = await tonClient.runMethod(
+        Address.parse(CONTRACT_ADDRESS), "claimable",
+        [{ type: "slice", cell: beginCell().storeAddress(Address.parse(address)).endCell() }]
+      );
+      setClaimable(res.stack.readBigNumber());
+    } catch {}
+  }, [address]);
 
-  const refetchAllowance = useCallback(() => {
-    if (!userAddr) return;
-    publicClient.readContract({ address: USDC_ADDRESS, abi: ERC20_ABI, functionName: "allowance", args: [userAddr, SPINMINT_ADDRESS] })
-      .then(v => setAllowance(v as bigint)).catch(() => {});
-  }, [userAddr]);
-
-  const refetchClaimable = useCallback(() => {
-    if (!userAddr) return;
-    publicClient.readContract({ address: SPINMINT_ADDRESS, abi: SPINMINT_ABI, functionName: "getClaimable", args: [userAddr] })
-      .then(v => setClaimable(v as readonly [bigint, bigint])).catch(() => {});
-  }, [userAddr]);
-
-  // Poll stats every 30s
+  // Poll jackpot + totalSpins every 30s
   useEffect(() => {
-    if (!SPINMINT_ADDRESS) return;
-    const load = () => publicClient.readContract({ address: SPINMINT_ADDRESS, abi: SPINMINT_ABI, functionName: "getStats" })
-      .then(v => setStats(v as unknown as readonly [bigint, bigint, bigint])).catch(() => {});
+    if (!CONTRACT_ADDRESS) return;
+    const load = async () => {
+      try {
+        const j = await tonClient.runMethod(Address.parse(CONTRACT_ADDRESS), "jackpot", []);
+        setJackpot(j.stack.readBigNumber());
+        const t = await tonClient.runMethod(Address.parse(CONTRACT_ADDRESS), "totalSpins", []);
+        setTotalSpins(t.stack.readBigNumber());
+      } catch {}
+    };
     load();
     const id = setInterval(load, 30_000);
     return () => clearInterval(id);
   }, []);
 
-  // Load user-specific data when wallet connects
+  // Load user claimable when wallet connects
   useEffect(() => {
-    if (!userAddr) return;
-    publicClient.readContract({ address: SPINMINT_ADDRESS, abi: SPINMINT_ABI, functionName: "getUserInfo", args: [userAddr] })
-      .then(v => setUserInfo(v as unknown as readonly [bigint, boolean, bigint, bigint])).catch(() => {});
-    refetchAllowance();
+    if (!address) return;
     refetchClaimable();
-  }, [userAddr, refetchAllowance, refetchClaimable]);
+  }, [address, refetchClaimable]);
 
-  // Wait for tx receipt
-  useEffect(() => {
-    if (!txHash) return;
-    setReceipt(undefined);
-    publicClient.waitForTransactionReceipt({ hash: txHash, pollingInterval: 2000 })
-      .then(setReceipt).catch(() => {});
-  }, [txHash]);
-
-  // Mounted guard — prevents SSR/client hydration mismatch for wallet-dependent UI
   useEffect(() => { setMounted(true); }, []);
-
-  // Decode SpinResult from receipt (V2: prize + isJackpot)
-  useEffect(() => {
-    if (!receipt) return;
-    let tier = 4;
-    for (const log of receipt.logs) {
-      try {
-        const decoded = decodeEventLog({ abi: SPINMINT_ABI, eventName: "SpinResult", data: log.data, topics: log.topics });
-        const { prize, isJackpot } = decoded.args as { prize: bigint; isJackpot: boolean };
-        if (isJackpot) tier = 0;
-        else if (prize >= parseUnits("3", 6)) tier = 1;
-        else if (prize > 0n) tier = 2;
-        else {
-          // Check for free spin grant in same tx
-          const hasFreeGrant = receipt.logs.some(l => {
-            try { decodeEventLog({ abi: SPINMINT_ABI, eventName: "FreeSpinGranted", data: l.data, topics: l.topics }); return true; } catch { return false; }
-          });
-          // Check for rare NFT mint
-          const hasMint = receipt.logs.some(l => {
-            try { decodeEventLog({ abi: SPINMINT_ABI, eventName: "Minted", data: l.data, topics: l.topics }); return true; } catch { return false; }
-          });
-          tier = hasFreeGrant ? 5 : hasMint ? 3 : 4;
-        }
-        break;
-      } catch {}
-    }
-    setWinTier(tier);
-    setPhase("spinning");
-    refetchClaimable();
-  }, [receipt]);
 
   // Boot audio on first interaction
   const bootAudio = useCallback(() => {
@@ -904,87 +831,90 @@ export default function SpinMintApp() {
     }
   };
 
-  const safeWrite = async (args: { address: `0x${string}`; abi: typeof SPINMINT_ABI | typeof ERC20_ABI; functionName: string; args?: readonly unknown[] }) => {
-    if (!walletClient) throw new Error("Wallet not connected");
-    return walletClient.writeContract({ ...args, chain: base } as unknown as Parameters<typeof walletClient.writeContract>[0]);
+  // Poll claimable to detect spin result (before vs after)
+  const pollForResult = useCallback(async (prevClaimable: bigint) => {
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 2500));
+      try {
+        const res = await tonClient.runMethod(
+          Address.parse(CONTRACT_ADDRESS), "claimable",
+          [{ type: "slice", cell: beginCell().storeAddress(Address.parse(address!)).endCell() }]
+        );
+        const newClaimable = res.stack.readBigNumber();
+        const gained = newClaimable - prevClaimable;
+        if (gained !== 0n || newClaimable !== prevClaimable) {
+          // Infer tier from prize amount
+          let tier = 4;
+          if (gained >= toNano("100")) tier = 0;       // jackpot
+          else if (gained >= toNano("4")) tier = 1;    // big win
+          else if (gained > 0n) tier = 2;              // small win
+          setWinTier(tier);
+          setClaimable(newClaimable);
+          return;
+        }
+      } catch {}
+    }
+    // Timed out — show nothing result
+    setWinTier(4);
+  }, [address]);
+
+  const handleSpin = async () => {
+    if (!address) return;
+    bootAudio();
+    setError(null);
+    try {
+      setPhase("minting");
+      const prevClaimable = claimableAmt;
+      await tonConnectUI.sendTransaction({
+        validUntil: Math.floor(Date.now() / 1000) + 60,
+        messages: [{
+          address: CONTRACT_ADDRESS,
+          amount: toNano("1.05").toString(), // 1 TON spin + 0.05 gas
+          payload: SPIN_PAYLOAD,
+        }],
+      });
+      setPhase("spinning");
+      await pollForResult(prevClaimable);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message.slice(0, 80) : "Transaction cancelled");
+      setPhase("idle");
+    }
   };
 
-  const handleWithdraw = async (to: `0x${string}`) => {
+  const handleClaim = async () => {
     setShowWithdraw(false);
     setError(null);
     try {
       setPhase("minting");
-      const hash = await safeWrite({
-        address: SPINMINT_ADDRESS, abi: SPINMINT_ABI, functionName: "claim", args: [to],
+      await tonConnectUI.sendTransaction({
+        validUntil: Math.floor(Date.now() / 1000) + 60,
+        messages: [{
+          address: CONTRACT_ADDRESS,
+          amount: toNano("0.05").toString(), // gas only
+          payload: CLAIM_PAYLOAD,
+        }],
       });
-      await publicClient.waitForTransactionReceipt({ hash, pollingInterval: 2000 });
-      refetchClaimable();
+      setClaimable(0n);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message.slice(0, 100) : "Withdraw failed");
+      setError(e instanceof Error ? e.message.slice(0, 80) : "Claim failed");
     } finally {
       setPhase("idle");
     }
   };
 
-  const handleMint = async () => {
-    if (!address) return;
-    bootAudio();
-    setError(null);
-    try {
-      if (!allowance || allowance < parseUnits("1", 6)) {
-        setPhase("approving");
-        const approveHash = await safeWrite({
-          address: USDC_ADDRESS, abi: ERC20_ABI, functionName: "approve",
-          args: [SPINMINT_ADDRESS, parseUnits("1", 6)],
-        });
-        // Wait for approve to confirm on-chain before spending the allowance
-        await publicClient.waitForTransactionReceipt({ hash: approveHash, pollingInterval: 2000 });
-      }
-      setPhase("minting");
-      const hash = await safeWrite({
-        address: SPINMINT_ADDRESS, abi: SPINMINT_ABI, functionName: "mintAndSpin",
-      });
-      setTxHash(hash);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message.slice(0, 100) : "Transaction failed");
-      setPhase("idle");
-    }
-  };
-
-  const handleFreeSpin = async () => {
-    if (!address) return;
-    bootAudio();
-    setError(null);
-    try {
-      setPhase("minting");
-      const hash = await safeWrite({
-        address: SPINMINT_ADDRESS, abi: SPINMINT_ABI, functionName: "useFreeSpin",
-      });
-      setTxHash(hash);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message.slice(0, 100) : "Transaction failed");
-      setPhase("idle");
-    }
-  };
-
   const onSpinEnd = () => { setPhase("reveal"); setShowReveal(true); if (winTier !== null) playWin(winTier); };
-  const onCloseReveal = () => { setShowReveal(false); setPhase("idle"); setWinTier(null); setTxHash(undefined); };
+  const onCloseReveal = () => { setShowReveal(false); setPhase("idle"); setWinTier(null); };
 
-  const jackpot       = stats ? stats[0] : 0n;
-  const totalMints    = stats ? stats[1] : 0n;
-  const userStreak    = userInfo ? userInfo[0] : 0n;
-  const hasFree       = userInfo ? userInfo[1] : false;
-  const claimableAmt  = claimableData ? claimableData[0] : 0n;
-  const claimableExp  = claimableData ? claimableData[1] : 0n;
   const hasWinnings   = claimableAmt > 0n;
   const isSpinning    = phase === "spinning";
-  const isBusy        = phase === "approving" || phase === "minting";
-  const isConnected   = !!address;
+  const isBusy        = phase === "minting";
+  const isConnected   = !!wallet;
 
   const btnLabel = {
-    idle:      "MINT & SPIN  -  $1 USDC",
-    approving: "APPROVING USDC...",
-    minting:   "MINTING...",
+    idle:      "SPIN  —  1 TON",
+    approving: "...",
+    minting:   "SENDING...",
     spinning:  "SPINNING...",
     reveal:    "...",
   }[phase];
@@ -1076,9 +1006,9 @@ export default function SpinMintApp() {
           </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <div style={{ textAlign: "right" }}>
-              <p style={{ fontSize: 8, color: "#ffffff44", letterSpacing: 2 }}>TOTAL MINTS</p>
+              <p style={{ fontSize: 8, color: "#ffffff44", letterSpacing: 2 }}>TOTAL SPINS</p>
               <p style={{ fontFamily: "'Bebas Neue'", fontSize: 22, color: "#4ECDC4", textShadow: "0 0 14px #4ECDC4" }}>
-                {totalMints.toString()}
+                {totalSpins.toString()}
               </p>
             </div>
             <button onClick={toggleMute} style={{
@@ -1121,42 +1051,27 @@ export default function SpinMintApp() {
           />
         </div>
 
-        {/* User stats */}
+        {/* Wallet address pill */}
         {mounted && isConnected && (
-          <>
-            <div style={{ display: "flex", gap: "6px", width: "100%", flexShrink: 0 }}>
-              {[
-                { label: "STREAK", val: `${userStreak.toString()}`, color: "#FF6B35" },
-                { label: "FREE SPIN", val: hasFree ? "READY!" : "–", color: hasFree ? "#4ECDC4" : "#ffffff22" },
-              ].map(({ label, val, color }) => (
-                <div key={label} style={{
-                  flex: 1, borderRadius: 10, padding: "5px 10px",
-                  background: "#ffffff07", border: `1px solid ${color}33`,
-                  textAlign: "center",
-                }}>
-                  <p style={{ fontSize: 7, color: "#ffffff44", letterSpacing: 2 }}>{label}</p>
-                  <p style={{ fontSize: 18, color, fontFamily: "'Bebas Neue'", textShadow: `0 0 10px ${color}`, letterSpacing: 2 }}>
-                    {val}
-                  </p>
-                </div>
-              ))}
-            </div>
-            {/* Wallet address — tap to copy */}
-            <div
-              onClick={() => { navigator.clipboard?.writeText(address!).catch(() => {}); }}
-              style={{
-                width: "100%", borderRadius: 8, padding: "5px 10px",
-                background: "#ffffff05", border: "1px solid #ffffff0f",
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                cursor: "pointer",
-              }}
-            >
-              <p style={{ fontSize: 7, color: "#ffffff33", letterSpacing: 2 }}>YOUR WALLET</p>
-              <p style={{ fontSize: 9, color: "#ffffff44", fontFamily: "'Space Mono',monospace", letterSpacing: 1 }}>
-                {address!.slice(0, 6)}…{address!.slice(-4)}
+          <div style={{ display: "flex", gap: "6px", width: "100%", flexShrink: 0, alignItems: "center" }}>
+            <div style={{
+              flex: 1, borderRadius: 8, padding: "5px 10px",
+              background: "#ffffff05", border: "1px solid #ffffff0f",
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+            }}>
+              <p style={{ fontSize: 7, color: "#ffffff33", letterSpacing: 2 }}>TON WALLET</p>
+              <p style={{ fontSize: 9, color: "#ffffff55", fontFamily: "'Space Mono',monospace" }}>
+                {address.slice(0, 6)}…{address.slice(-4)}
               </p>
             </div>
-          </>
+            <button onClick={() => tonConnectUI.disconnect()} style={{
+              background: "#ffffff08", border: "1px solid #ffffff15",
+              borderRadius: 8, padding: "5px 10px", color: "#ffffff44",
+              fontSize: 9, cursor: "pointer", whiteSpace: "nowrap",
+            }}>
+              DISCONNECT
+            </button>
+          </div>
         )}
 
         {/* Claimable winnings banner */}
@@ -1173,14 +1088,14 @@ export default function SpinMintApp() {
             <div>
               <p style={{ fontSize: 8, color: "#2ED57399", letterSpacing: 3 }}>YOUR WINNINGS</p>
               <p style={{ fontFamily: "'Bebas Neue'", fontSize: 28, color: "#2ED573", textShadow: "0 0 14px #2ED573", lineHeight: 1 }}>
-                {parseFloat(formatUnits(claimableAmt, 6)).toFixed(2)} USDC
+                {parseFloat(fromNano(claimableAmt)).toFixed(2)} TON
               </p>
             </div>
             <div style={{
               background: "#2ED573", color: "#000", padding: "8px 14px",
               borderRadius: 8, fontFamily: "'Bebas Neue'", fontSize: 14, letterSpacing: 2,
             }}>
-              WITHDRAW
+              CLAIM
             </div>
           </div>
         )}
@@ -1194,28 +1109,23 @@ export default function SpinMintApp() {
 
         {/* CTA */}
         <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 6, flexShrink: 0, paddingBottom: 10 }}>
-          {!mounted ? null : walletLoading ? (
-            <div style={{
-              width: "100%", padding: "16px", borderRadius: 14,
-              background: "#ffffff0a", border: "1px solid #ffffff22",
-              textAlign: "center", fontFamily: "'Space Mono',monospace",
-              fontSize: 11, color: "#ffffff55", letterSpacing: 3,
-            }}>
-              CONNECTING WALLET...
-            </div>
-          ) : !isConnected ? (
-            <div style={{
-              width: "100%", padding: "16px", borderRadius: 14,
-              background: "#ff000011", border: "1px solid #ff000033",
-              textAlign: "center", fontFamily: "'Space Mono',monospace",
-              fontSize: 10, color: "#ff6b6b", letterSpacing: 2,
-            }}>
-              OPEN IN TELEGRAM TO PLAY
-            </div>
+          {!mounted ? null : !isConnected ? (
+            <button
+              onClick={() => { bootAudio(); tonConnectUI.openModal(); }}
+              className="shimmer-btn"
+              style={{
+                width: "100%", padding: "15px", borderRadius: 14,
+                border: "none", cursor: "pointer",
+                fontFamily: "'Bebas Neue',sans-serif",
+                fontSize: 18, letterSpacing: 4, color: "#000",
+              }}
+            >
+              CONNECT TON WALLET
+            </button>
           ) : (
             <>
               <button
-                onClick={handleMint}
+                onClick={handleSpin}
                 disabled={isBusy || isSpinning}
                 className={isBusy || isSpinning ? "" : "shimmer-btn"}
                 style={{
@@ -1230,20 +1140,6 @@ export default function SpinMintApp() {
               >
                 {btnLabel}
               </button>
-
-              {hasFree && (
-                <button onClick={handleFreeSpin} disabled={isBusy || isSpinning} style={{
-                  width: "100%", padding: "11px", borderRadius: 12,
-                  background: "#4ECDC411", border: "2px solid #4ECDC4",
-                  color: "#4ECDC4", fontFamily: "'Bebas Neue',sans-serif",
-                  fontSize: 16, letterSpacing: 4,
-                  cursor: isBusy || isSpinning ? "not-allowed" : "pointer",
-                  opacity: isBusy || isSpinning ? 0.5 : 1,
-                  textShadow: "0 0 14px #4ECDC4",
-                }}>
-                  FREE SPIN — USE IT!
-                </button>
-              )}
 
               <button onClick={() => {
                 bootAudio();
@@ -1318,12 +1214,11 @@ export default function SpinMintApp() {
         <CollectiblePanel onClose={() => setShowCollectible(false)} />
       )}
 
-      {showWithdraw && claimableData && (
+      {showWithdraw && (
         <WithdrawModal
           claimable={claimableAmt}
-          expiresAt={claimableExp}
           onClose={() => setShowWithdraw(false)}
-          onWithdraw={handleWithdraw}
+          onWithdraw={handleClaim}
         />
       )}
       </div>{/* end scroll-root */}
