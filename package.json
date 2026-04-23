@@ -8,6 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@ton/core": "^0.56.3",
     "@ton/ton": "^15.1.0",
     "@tonconnect/ui-react": "^2.0.11",
     "@twa-dev/sdk": "^8.0.2",
