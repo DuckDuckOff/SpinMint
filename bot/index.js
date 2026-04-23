@@ -1,5 +1,7 @@
 const { Telegraf, Markup } = require("telegraf");
 const { TonClient, Address } = require("@ton/ton");
+const fs   = require("fs");
+const path = require("path");
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const BOT_TOKEN     = process.env.BOT_TOKEN;
@@ -8,6 +10,7 @@ const CHANNEL_ID    = process.env.CHANNEL_ID;
 const TONCENTER_KEY = process.env.TONCENTER_API_KEY;
 const MINI_APP_URL  = process.env.MINI_APP_URL  ?? "https://t.me/SpinMintingbot/play";
 const OWNER_ID      = process.env.OWNER_TG_ID   ? Number(process.env.OWNER_TG_ID) : null;
+const DATA_FILE     = process.env.DATA_FILE ?? "/data/groups.json";
 const BROADCAST_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 if (!BOT_TOKEN)     throw new Error("BOT_TOKEN is required");
@@ -21,12 +24,32 @@ const ton = new TonClient({
   apiKey: TONCENTER_KEY,
 });
 
-// ── Group registry (in-memory — rebuilds as groups interact) ──────────────────
-const groupChats = new Set();
+// ── Group registry (persisted to disk) ───────────────────────────────────────
+function loadGroups() {
+  try {
+    const data = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+    return new Set(data.groups ?? []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveGroups() {
+  try {
+    fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
+    fs.writeFileSync(DATA_FILE, JSON.stringify({ groups: [...groupChats] }));
+  } catch (e) {
+    console.error("Failed to save groups:", e.message);
+  }
+}
+
+const groupChats = loadGroups();
+console.log(`Loaded ${groupChats.size} group(s) from disk`);
 
 function registerGroup(chatId, type) {
   if (type === "group" || type === "supergroup") {
     groupChats.add(chatId);
+    saveGroups();
   }
 }
 
@@ -253,6 +276,7 @@ bot.on("my_chat_member", async (ctx) => {
                   update.new_chat_member.status === "administrator";
   if (!isAdded) {
     groupChats.delete(ctx.chat.id);
+    saveGroups();
     return;
   }
   if (ctx.chat.type === "private") return;
