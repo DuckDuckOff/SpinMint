@@ -1,7 +1,6 @@
 const { Telegraf, Markup } = require("telegraf");
 const { TonClient, Address } = require("@ton/ton");
-const fs   = require("fs");
-const path = require("path");
+const Redis = require("ioredis");
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const BOT_TOKEN     = process.env.BOT_TOKEN;
@@ -10,7 +9,7 @@ const CHANNEL_ID    = process.env.CHANNEL_ID;
 const TONCENTER_KEY = process.env.TONCENTER_API_KEY;
 const MINI_APP_URL  = process.env.MINI_APP_URL  ?? "https://t.me/SpinMintingbot/play";
 const OWNER_ID      = process.env.OWNER_TG_ID   ? Number(process.env.OWNER_TG_ID) : null;
-const DATA_FILE     = process.env.DATA_FILE ?? "/data/groups.json";
+const REDIS_URL     = process.env.REDIS_URL;
 const BROADCAST_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 if (!BOT_TOKEN)     throw new Error("BOT_TOKEN is required");
@@ -24,32 +23,36 @@ const ton = new TonClient({
   apiKey: TONCENTER_KEY,
 });
 
-// ── Group registry (persisted to disk) ───────────────────────────────────────
-function loadGroups() {
-  try {
-    const data = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
-    return new Set(data.groups ?? []);
-  } catch {
-    return new Set();
-  }
-}
+// ── Redis + group registry ────────────────────────────────────────────────────
+const redis = REDIS_URL ? new Redis(REDIS_URL) : null;
+const GROUPS_KEY = "spinmint:groups";
+const groupChats = new Set();
 
-function saveGroups() {
+async function loadGroups() {
+  if (!redis) return;
   try {
-    fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-    fs.writeFileSync(DATA_FILE, JSON.stringify({ groups: [...groupChats] }));
+    const members = await redis.smembers(GROUPS_KEY);
+    members.forEach(id => groupChats.add(Number(id)));
+    console.log(`Loaded ${groupChats.size} group(s) from Redis`);
   } catch (e) {
-    console.error("Failed to save groups:", e.message);
+    console.error("Failed to load groups from Redis:", e.message);
   }
 }
 
-const groupChats = loadGroups();
-console.log(`Loaded ${groupChats.size} group(s) from disk`);
+async function saveGroup(chatId) {
+  if (!redis) return;
+  try { await redis.sadd(GROUPS_KEY, chatId); } catch {}
+}
 
-function registerGroup(chatId, type) {
+async function removeGroup(chatId) {
+  if (!redis) return;
+  try { await redis.srem(GROUPS_KEY, chatId); } catch {}
+}
+
+async function registerGroup(chatId, type) {
   if (type === "group" || type === "supergroup") {
     groupChats.add(chatId);
-    saveGroups();
+    await saveGroup(chatId);
   }
 }
 
@@ -276,7 +279,7 @@ bot.on("my_chat_member", async (ctx) => {
                   update.new_chat_member.status === "administrator";
   if (!isAdded) {
     groupChats.delete(ctx.chat.id);
-    saveGroups();
+    await removeGroup(ctx.chat.id);
     return;
   }
   if (ctx.chat.type === "private") return;
@@ -291,8 +294,10 @@ bot.on("my_chat_member", async (ctx) => {
 });
 
 // ── Launch ────────────────────────────────────────────────────────────────────
-bot.launch(() => {
+bot.launch(async () => {
   console.log("✅ SpinMint promo bot running");
+
+  await loadGroups();
 
   // Contract monitor every 60s
   monitor();
@@ -300,7 +305,6 @@ bot.launch(() => {
 
   // Broadcast to groups every 4 hours
   setInterval(scheduledBroadcast, BROADCAST_INTERVAL_MS);
-  // First broadcast after 10 minutes (let groups register first)
   setTimeout(scheduledBroadcast, 10 * 60 * 1000);
 });
 
