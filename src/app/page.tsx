@@ -10,24 +10,27 @@ import { tonClient } from "../lib/tonClient";
 // ─── Config ───────────────────────────────────────────────────────────────────
 const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ?? "";
 // Spin opcode matches Tact message(0x7370696e) Spin {}
-const SPIN_PAYLOAD = beginCell().storeUint(0x7370696e, 32).endCell().toBoc().toString("base64");
-const CLAIM_PAYLOAD = beginCell().storeUint(0x636c6169, 32).endCell().toBoc().toString("base64");
+const SPIN_PAYLOAD      = beginCell().storeUint(0x7370696e, 32).endCell().toBoc().toString("base64");
+const CLAIM_PAYLOAD     = beginCell().storeUint(0x636c6169, 32).endCell().toBoc().toString("base64");
+const FREE_SPIN_PAYLOAD = beginCell().storeUint(0x66726565, 32).endCell().toBoc().toString("base64");
+const JETTON_MASTER     = process.env.NEXT_PUBLIC_JETTON_MASTER ?? "";
 
 
 // ─── Prize config ─────────────────────────────────────────────────────────────
 const PRIZES = [
-  { label: "JACKPOT",    tier: 0, color: "#FFD700", dark: "#7a6200" },
-  { label: "BIG WIN",    tier: 1, color: "#FF6B35", dark: "#7a3319" },
-  { label: "$2 WIN",     tier: 2, color: "#4ECDC4", dark: "#1e6460" },
-  { label: "RARE NFT",   tier: 3, color: "#A855F7", dark: "#531a82" },
-  { label: "AGAIN",      tier: 4, color: "#374151", dark: "#1a1f27" },
-  { label: "FREE SPIN!", tier: 5, color: "#2ED573", dark: "#1a6b3a" },
+  { label: "JACKPOT",   tier: 0, color: "#FFD700", dark: "#7a6200" },
+  { label: "BIG WIN",   tier: 1, color: "#FF6B35", dark: "#7a3319" },
+  { label: "TON WIN",   tier: 2, color: "#4ECDC4", dark: "#1e6460" },
+  { label: "SM BIG",    tier: 3, color: "#A855F7", dark: "#531a82" },
+  { label: "SM SMALL",  tier: 4, color: "#8B5CF6", dark: "#3b1a82" },
+  { label: "FREE SPIN", tier: 5, color: "#2ED573", dark: "#1a6b3a" },
+  { label: "TRY AGAIN", tier: 6, color: "#374151", dark: "#1a1f27" },
 ];
 
 const SEGMENTS = [
-  PRIZES[0], PRIZES[2], PRIZES[4], PRIZES[1],
-  PRIZES[3], PRIZES[5], PRIZES[2], PRIZES[4],
-  PRIZES[3], PRIZES[4], PRIZES[1], PRIZES[5],
+  PRIZES[0], PRIZES[2], PRIZES[6], PRIZES[1],
+  PRIZES[3], PRIZES[5], PRIZES[4], PRIZES[6],
+  PRIZES[2], PRIZES[4], PRIZES[1], PRIZES[5],
 ];
 
 type Phase = "idle" | "minting" | "spinning" | "reveal";
@@ -149,11 +152,13 @@ interface Particle {
 let _pid = 0;
 function burst(tier: number, n: number): Particle[] {
   const palettes = [
-    ["#FFD700", "#FF6B35", "#FFF8DC", "#FFEC6E"],
-    ["#FF6B35", "#FF9D6B", "#FFA07A", "#FFD700"],
-    ["#4ECDC4", "#7EDDD8", "#B2EBF2", "#00E5D8"],
-    ["#A855F7", "#C77DFF", "#E0B4FF", "#7C3AED"],
-    ["#4B5563", "#6B7280", "#374151"],
+    ["#FFD700", "#FF6B35", "#FFF8DC", "#FFEC6E"],   // 0 jackpot
+    ["#FF6B35", "#FF9D6B", "#FFA07A", "#FFD700"],   // 1 big win
+    ["#4ECDC4", "#7EDDD8", "#B2EBF2", "#00E5D8"],   // 2 ton win
+    ["#A855F7", "#C77DFF", "#E0B4FF", "#7C3AED"],   // 3 sm big
+    ["#8B5CF6", "#A78BFA", "#C4B5FD", "#7C3AED"],   // 4 sm small
+    ["#2ED573", "#7BF0A8", "#B4F8CE", "#00CC55"],   // 5 free spin
+    ["#4B5563", "#6B7280", "#374151"],               // 6 try again
   ];
   const pal = palettes[tier] ?? palettes[4];
   return Array.from({ length: n }, () => {
@@ -390,18 +395,19 @@ function SpinWheel({ spinning, winTier, onSpinEnd, onTick, size }: {
 
 // ─── Win Celebration ──────────────────────────────────────────────────────────
 function WinCelebration({ tier, onClose }: { tier: number; onClose: () => void }) {
-  const [particles, setParticles] = useState<Particle[]>(() => burst(tier, tier === 0 ? 90 : tier === 4 ? 12 : 45));
+  const [particles, setParticles] = useState<Particle[]>(() => burst(tier, tier === 0 ? 90 : tier === 6 ? 12 : 45));
   const [flash, setFlash] = useState(true);
   const rafRef = useRef<number>(0);
 
-  const prize = PRIZES.find(p => p.tier === tier) ?? PRIZES[4];
+  const prize = PRIZES.find(p => p.tier === tier) ?? PRIZES[6];
   const MSGS = {
-    0: { title: "JACKPOT!!!",       sub: "The entire pool is YOURS!",             emoji: "💰" },
-    1: { title: "BIG WIN!",         sub: "$3 USDC sent to your wallet",            emoji: "🔥" },
-    2: { title: "YOU WON!",         sub: "$2 USDC sent to your wallet",            emoji: "✨" },
-    3: { title: "RARE NFT!",        sub: "A rare SpinMint NFT was minted for you", emoji: "💎" },
-    4: { title: "BETTER LUCK...",   sub: "No win this time. Try again?",           emoji: "🎰" },
-    5: { title: "FREE SPIN!",       sub: "Spin again on the house!",               emoji: "🎁" },
+    0: { title: "JACKPOT!!!",  sub: "The entire pool is YOURS!",          emoji: "💰" },
+    1: { title: "BIG WIN!",    sub: "5 TON sent to your wallet",          emoji: "🔥" },
+    2: { title: "TON WIN!",    sub: "1.5 TON sent to your wallet",        emoji: "✨" },
+    3: { title: "SPINMINT!",   sub: "3,000 $SM on its way to you",        emoji: "🍬" },
+    4: { title: "SPINMINT!",   sub: "2,000 $SM on its way to you",        emoji: "🍬" },
+    5: { title: "FREE SPIN!",  sub: "150 $SM + a free spin banked!",      emoji: "🎁" },
+    6: { title: "TRY AGAIN",   sub: "50 $SM consolation — keep spinning", emoji: "🎰" },
   };
   const msg = MSGS[tier as keyof typeof MSGS] ?? MSGS[4];
 
@@ -447,7 +453,7 @@ function WinCelebration({ tier, onClose }: { tier: number; onClose: () => void }
       ))}
 
       {/* Tier badge banner for wins */}
-      {tier < 4 && (
+      {tier !== 6 && (
         <div style={{
           position: "absolute", top: 24, left: 0, right: 0,
           textAlign: "center",
@@ -473,7 +479,7 @@ function WinCelebration({ tier, onClose }: { tier: number; onClose: () => void }
         borderRadius: 24, padding: "28px 24px",
         textAlign: "center", maxWidth: 290, width: "85%",
         boxShadow: `0 0 60px ${prize.color}55, 0 0 120px ${prize.color}22, inset 0 1px 0 ${prize.color}33`,
-        transform: flash && tier < 4 ? "scale(1.025)" : "scale(1)",
+        transform: flash && tier !== 6 ? "scale(1.025)" : "scale(1)",
         transition: "transform 0.1s",
         position: "relative", zIndex: 10,
       }}>
@@ -710,6 +716,58 @@ function CollectiblePanel({
   );
 }
 
+// ─── Prize Tiers Panel ───────────────────────────────────────────────────────
+function PrizeTiersPanel({ onClose }: { onClose: () => void }) {
+  const TIERS = [
+    { label: "JACKPOT",   odds: "0.05%", prize: "Full TON Pool",        color: "#FFD700", icon: "💰" },
+    { label: "BIG WIN",   odds: "0.20%", prize: "5 TON",                color: "#FF6B35", icon: "🔥" },
+    { label: "TON WIN",   odds: "3.90%", prize: "1.5 TON",              color: "#4ECDC4", icon: "✨" },
+    { label: "SM BIG",    odds: "9.60%", prize: "3,000 SPINMINT",       color: "#A855F7", icon: "🍬" },
+    { label: "SM SMALL",  odds: "18.0%", prize: "2,000 SPINMINT",       color: "#8B5CF6", icon: "🍬" },
+    { label: "FREE SPIN", odds: "10.0%", prize: "150 SM + Free Spin",   color: "#2ED573", icon: "🎁" },
+    { label: "TRY AGAIN", odds: "58.25%","prize": "50 SPINMINT",        color: "#6B7280", icon: "🎰" },
+  ];
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}
+      onClick={onClose}>
+      <div style={{ position: "absolute", inset: 0, background: "#00000088", backdropFilter: "blur(4px)" }} />
+      <div onClick={e => e.stopPropagation()} style={{
+        position: "relative", zIndex: 1,
+        background: "linear-gradient(170deg,#0f0f1e,#0a0a14)",
+        border: "1px solid #ffffff18", borderRadius: "20px 20px 0 0",
+        padding: "16px 16px 32px", maxHeight: "80vh", overflowY: "auto",
+      }}>
+        <div style={{ width: 40, height: 4, borderRadius: 2, background: "#ffffff33", margin: "0 auto 14px" }} />
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <h2 style={{ fontFamily: "'Bebas Neue'", fontSize: 26, letterSpacing: 3, color: "#fff" }}>PRIZE TABLE</h2>
+          <button onClick={onClose} style={{ background: "#ffffff11", border: "1px solid #ffffff22", borderRadius: 8, padding: "4px 10px", color: "#fff", cursor: "pointer", fontSize: 16 }}>✕</button>
+        </div>
+        {TIERS.map(t => (
+          <div key={t.label} style={{
+            display: "flex", alignItems: "center", gap: 10,
+            padding: "8px 10px", borderRadius: 10,
+            background: "#ffffff05", border: `1px solid ${t.color}22`, marginBottom: 6,
+          }}>
+            <span style={{ fontSize: 20 }}>{t.icon}</span>
+            <div style={{ flex: 1 }}>
+              <p style={{ fontFamily: "'Bebas Neue'", fontSize: 16, color: t.color, letterSpacing: 2, lineHeight: 1 }}>{t.label}</p>
+              <p style={{ fontSize: 9, color: "#ffffff55", letterSpacing: 1 }}>{t.prize}</p>
+            </div>
+            <div style={{
+              background: `${t.color}22`, border: `1px solid ${t.color}55`,
+              borderRadius: 8, padding: "3px 8px",
+              fontFamily: "'Space Mono',monospace", fontSize: 9, color: t.color, whiteSpace: "nowrap",
+            }}>{t.odds}</div>
+          </div>
+        ))}
+        <p style={{ fontSize: 8, color: "#ffffff22", textAlign: "center", marginTop: 10, letterSpacing: 1 }}>
+          1 TON PER SPIN  •  ODDS OUT OF 10,000
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Withdraw Modal ───────────────────────────────────────────────────────────
 function WithdrawModal({ claimable, onClose, onWithdraw }: {
   claimable: bigint;
@@ -767,20 +825,24 @@ export default function SpinMintApp() {
   const [audioReady, setAudioReady] = useState(false);
   const [showCollectible, setShowCollectible] = useState(false);
   const [showWithdraw, setShowWithdraw]       = useState(false);
+  const [showPrizeTiers, setShowPrizeTiers]   = useState(false);
+  const [freeSpins, setFreeSpins]             = useState<bigint>(0n);
 
   // TON contract state
   const [jackpot, setJackpot]         = useState<bigint>(0n);
   const [totalSpins, setTotalSpins]   = useState<bigint>(0n);
   const [claimableAmt, setClaimable]  = useState<bigint>(0n);
 
-  const refetchClaimable = useCallback(async () => {
+  const refetchUserState = useCallback(async () => {
     if (!address || !CONTRACT_ADDRESS) return;
     try {
-      const res = await tonClient.runMethod(
-        Address.parse(CONTRACT_ADDRESS), "claimable",
-        [{ type: "slice", cell: beginCell().storeAddress(Address.parse(address)).endCell() }]
-      );
-      setClaimable(res.stack.readBigNumber());
+      const addrCell = { type: "slice" as const, cell: beginCell().storeAddress(Address.parse(address)).endCell() };
+      const [claimRes, fsRes] = await Promise.all([
+        tonClient.runMethod(Address.parse(CONTRACT_ADDRESS), "claimable", [addrCell]),
+        tonClient.runMethod(Address.parse(CONTRACT_ADDRESS), "freeSpins", [addrCell]),
+      ]);
+      setClaimable(claimRes.stack.readBigNumber());
+      setFreeSpins(fsRes.stack.readBigNumber());
     } catch {}
   }, [address]);
 
@@ -800,11 +862,11 @@ export default function SpinMintApp() {
     return () => clearInterval(id);
   }, []);
 
-  // Load user claimable when wallet connects
+  // Load user state when wallet connects
   useEffect(() => {
     if (!address) return;
-    refetchClaimable();
-  }, [address, refetchClaimable]);
+    refetchUserState();
+  }, [address, refetchUserState]);
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -831,32 +893,44 @@ export default function SpinMintApp() {
     }
   };
 
-  // Poll claimable to detect spin result (before vs after)
-  const pollForResult = useCallback(async (prevClaimable: bigint) => {
+  // Poll contract state to detect spin result
+  const pollForResult = useCallback(async (prevClaimable: bigint, prevFreeSpins: bigint, prevTotalSpins: bigint) => {
     const deadline = Date.now() + 30_000;
+    const addrCell = { type: "slice" as const, cell: beginCell().storeAddress(Address.parse(address!)).endCell() };
     while (Date.now() < deadline) {
       await new Promise(r => setTimeout(r, 2500));
       try {
-        const res = await tonClient.runMethod(
-          Address.parse(CONTRACT_ADDRESS), "claimable",
-          [{ type: "slice", cell: beginCell().storeAddress(Address.parse(address!)).endCell() }]
-        );
-        const newClaimable = res.stack.readBigNumber();
-        const gained = newClaimable - prevClaimable;
-        if (gained !== 0n || newClaimable !== prevClaimable) {
-          // Infer tier from prize amount
-          let tier = 4;
-          if (gained >= toNano("100")) tier = 0;       // jackpot
-          else if (gained >= toNano("4")) tier = 1;    // big win
-          else if (gained > 0n) tier = 2;              // small win
-          setWinTier(tier);
-          setClaimable(newClaimable);
-          return;
+        const [claimRes, fsRes, spinsRes] = await Promise.all([
+          tonClient.runMethod(Address.parse(CONTRACT_ADDRESS), "claimable", [addrCell]),
+          tonClient.runMethod(Address.parse(CONTRACT_ADDRESS), "freeSpins", [addrCell]),
+          tonClient.runMethod(Address.parse(CONTRACT_ADDRESS), "totalSpins", []),
+        ]);
+        const newClaimable   = claimRes.stack.readBigNumber();
+        const newFreeSpins   = fsRes.stack.readBigNumber();
+        const newTotalSpins  = spinsRes.stack.readBigNumber();
+        const tonGained      = newClaimable - prevClaimable;
+        const fsGained       = newFreeSpins - prevFreeSpins;
+        const spinProcessed  = newTotalSpins > prevTotalSpins;
+
+        if (!spinProcessed) continue;
+
+        setTotalSpins(newTotalSpins);
+        if (tonGained >= toNano("3")) {
+          setWinTier(0); setClaimable(newClaimable);
+        } else if (tonGained >= toNano("4")) {
+          setWinTier(1); setClaimable(newClaimable);
+        } else if (tonGained > 0n) {
+          setWinTier(2); setClaimable(newClaimable);
+        } else if (fsGained > 0n) {
+          setWinTier(5); setFreeSpins(newFreeSpins);
+        } else {
+          // SPINMINT tier (3, 4, or 6) — can't distinguish without events
+          setWinTier(6);
         }
+        return;
       } catch {}
     }
-    // Timed out — show nothing result
-    setWinTier(4);
+    setWinTier(6);
   }, [address]);
 
   const handleSpin = async () => {
@@ -865,17 +939,19 @@ export default function SpinMintApp() {
     setError(null);
     try {
       setPhase("minting");
-      const prevClaimable = claimableAmt;
+      const prevClaimable  = claimableAmt;
+      const prevFreeSpins  = freeSpins;
+      const prevTotalSpins = totalSpins;
       await tonConnectUI.sendTransaction({
         validUntil: Math.floor(Date.now() / 1000) + 60,
         messages: [{
           address: CONTRACT_ADDRESS,
-          amount: toNano("1.05").toString(), // 1 TON spin + 0.05 gas
+          amount: toNano("1.05").toString(),
           payload: SPIN_PAYLOAD,
         }],
       });
       setPhase("spinning");
-      await pollForResult(prevClaimable);
+      await pollForResult(prevClaimable, prevFreeSpins, prevTotalSpins);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message.slice(0, 80) : "Transaction cancelled");
       setPhase("idle");
@@ -1035,8 +1111,13 @@ export default function SpinMintApp() {
             <p className="jackpot-num" style={{ fontSize: 28, lineHeight: 1 }}>{fmt(jackpot)}</p>
           </div>
           <div style={{ textAlign: "right" }}>
-            <p style={{ fontSize: 8, color: "#ffffff55", letterSpacing: 2 }}>TOP PRIZE</p>
-            <p style={{ fontFamily: "'Bebas Neue'", fontSize: 18, color: "#FFD700", textShadow: "0 0 10px #FFD700", letterSpacing: 2 }}>2% ODDS</p>
+            <button onClick={() => setShowPrizeTiers(true)} style={{
+              background: "#FFD70022", border: "1px solid #FFD70055",
+              borderRadius: 8, padding: "4px 10px", cursor: "pointer",
+              fontFamily: "'Space Mono',monospace", fontSize: 8,
+              color: "#FFD700", letterSpacing: 2,
+            }}>PRIZES ↑</button>
+            <p style={{ fontFamily: "'Bebas Neue'", fontSize: 14, color: "#FFD700", letterSpacing: 2, marginTop: 3 }}>0.05% JACKPOT</p>
           </div>
         </div>
 
@@ -1141,9 +1222,39 @@ export default function SpinMintApp() {
                 {btnLabel}
               </button>
 
+              {freeSpins > 0n && (
+                <button onClick={async () => {
+                  bootAudio();
+                  setError(null);
+                  try {
+                    setPhase("minting");
+                    const prevClaimable  = claimableAmt;
+                    const prevFreeSpins  = freeSpins;
+                    const prevTotalSpins = totalSpins;
+                    await tonConnectUI.sendTransaction({
+                      validUntil: Math.floor(Date.now() / 1000) + 60,
+                      messages: [{ address: CONTRACT_ADDRESS, amount: toNano("0.05").toString(), payload: FREE_SPIN_PAYLOAD }],
+                    });
+                    setPhase("spinning");
+                    await pollForResult(prevClaimable, prevFreeSpins, prevTotalSpins);
+                  } catch (e: unknown) {
+                    setError(e instanceof Error ? e.message.slice(0, 80) : "Transaction cancelled");
+                    setPhase("idle");
+                  }
+                }} style={{
+                  width: "100%", padding: "11px", borderRadius: 12,
+                  background: "linear-gradient(135deg,#2ED57333,#1a6b3a33)",
+                  border: "1px solid #2ED57366", cursor: "pointer",
+                  fontFamily: "'Bebas Neue',sans-serif", fontSize: 16, letterSpacing: 3,
+                  color: "#2ED573",
+                }}>
+                  USE FREE SPIN  ({freeSpins.toString()} banked)
+                </button>
+              )}
+
               <button onClick={() => {
                 bootAudio();
-                const text = encodeURIComponent("🎰 Just minted on SpinMint — $1 USDC to spin and win the jackpot!\n\nPlay onchain on Base:");
+                const text = encodeURIComponent("🎰 Spinning on SpinMint — 1 TON to win the jackpot on Telegram!");
                 const url = encodeURIComponent(process.env.NEXT_PUBLIC_APP_URL ?? window.location.href);
                 window.open(`https://t.me/share/url?url=${url}&text=${text}`, "_blank");
               }} style={{
@@ -1205,6 +1316,8 @@ export default function SpinMintApp() {
           </div>
         </div>
       )}
+
+      {showPrizeTiers && <PrizeTiersPanel onClose={() => setShowPrizeTiers(false)} />}
 
       {showReveal && winTier !== null && (
         <WinCelebration tier={winTier} onClose={onCloseReveal} />
