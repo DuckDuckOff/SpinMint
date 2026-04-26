@@ -206,16 +206,10 @@ function SpinWheel({ spinning, winTier, onSpinEnd, onTick, size }: {
   const rafRef     = useRef<number>(0);
   const lastSegRef = useRef(-1);
 
-  const padded = size + 48;
-  const cx     = padded / 2;
-  const cy     = padded / 2;
-  const r      = size / 2;
   const slice  = (2 * Math.PI) / SEGMENTS.length;
 
   const setWheelAngle = useCallback((ang: number) => {
-    if (wheelRef.current) {
-      wheelRef.current.style.transform = `rotate(${(ang * 180 / Math.PI).toFixed(3)}deg)`;
-    }
+    if (wheelRef.current) wheelRef.current.style.transform = `rotate(${(ang * 180 / Math.PI).toFixed(3)}deg)`;
   }, []);
 
   useEffect(() => { setWheelAngle(angleRef.current); }, [setWheelAngle, size]);
@@ -271,28 +265,45 @@ function SpinWheel({ spinning, winTier, onSpinEnd, onTick, size }: {
         />
       </div>
 
-      {/* Fixed pointer — small SVG sitting at top edge, overflow visible */}
-      <svg
-        width={size} height={40}
-        style={{ position: "absolute", top: -8, left: 0, pointerEvents: "none", overflow: "visible" }}
-      >
-        <defs>
-          <filter id="ptrglow" x="-60%" y="-60%" width="220%" height="220%">
-            <feGaussianBlur stdDeviation="4" result="b"/>
-            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-          </filter>
-        </defs>
-        <polygon
-          points={`${size / 2},8 ${size / 2 - 13},34 ${size / 2 + 13},34`}
-          fill="#FF1744" stroke="white" strokeWidth="2.5"
-          filter="url(#ptrglow)"
-        />
-        <line
-          x1={size / 2 - 3} y1={10}
-          x2={size / 2 - 7} y2={28}
-          stroke="rgba(255,255,255,0.6)" strokeWidth="2.5" strokeLinecap="round"
-        />
-      </svg>
+      {/* Fixed center peppermint — stays still while wheel spins, arrow points up to winner */}
+      <div style={{
+        position: "absolute", top: "50%", left: "50%",
+        transform: "translate(-50%, -50%)",
+        pointerEvents: "none", zIndex: 10,
+      }}>
+        <svg width={64} height={64} viewBox="0 0 64 64">
+          <defs>
+            <filter id="cglow" x="-40%" y="-40%" width="180%" height="180%">
+              <feGaussianBlur stdDeviation="3" result="b"/>
+              <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+          {/* Peppermint slices */}
+          {Array.from({ length: 6 }, (_, i) => {
+            const sa = (i / 6) * 2 * Math.PI;
+            const ea = sa + Math.PI / 6;
+            const sx = (32 + 28 * Math.cos(sa)).toFixed(2);
+            const sy = (32 + 28 * Math.sin(sa)).toFixed(2);
+            const ex = (32 + 28 * Math.cos(ea)).toFixed(2);
+            const ey = (32 + 28 * Math.sin(ea)).toFixed(2);
+            return (
+              <path key={i}
+                d={`M 32 32 L ${sx} ${sy} A 28 28 0 0 1 ${ex} ${ey} Z`}
+                fill={i % 2 === 0 ? "#FF1744" : "#ffffff"} />
+            );
+          })}
+          {/* Border */}
+          <circle cx={32} cy={32} r={28} fill="none" stroke="#CC0022" strokeWidth="2.5" />
+          {/* Arrow pointing up — indicates winning segment at top */}
+          <polygon points="32,6 25,24 39,24"
+            fill="#FF1744" stroke="white" strokeWidth="2"
+            filter="url(#cglow)" />
+          {/* Gloss highlight */}
+          <ellipse cx={23} cy={19} rx={7} ry={4.5}
+            fill="rgba(255,255,255,0.35)"
+            transform="rotate(-35, 23, 19)" />
+        </svg>
+      </div>
     </div>
   );
 }
