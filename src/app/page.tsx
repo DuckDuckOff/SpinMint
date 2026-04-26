@@ -288,6 +288,9 @@ function SpinWheel({ spinning, winTier, onSpinEnd, onTick, size }: {
             <feGaussianBlur stdDeviation="4" result="b"/>
             <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
           </filter>
+          <filter id="lblglow" x="-40%" y="-40%" width="180%" height="180%">
+            <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor="white" floodOpacity="0.55"/>
+          </filter>
         </defs>
 
         {/* Outer candy glow */}
@@ -322,7 +325,8 @@ function SpinWheel({ spinning, winTier, onSpinEnd, onTick, size }: {
                   fontFamily="'Bebas Neue', sans-serif"
                   fontWeight="bold"
                   fill="white"
-                  stroke="rgba(0,0,0,0.65)" strokeWidth="3.5" paintOrder="stroke"
+                  stroke="rgba(0,0,0,0.45)" strokeWidth="2.2" paintOrder="stroke"
+                  filter="url(#lblglow)"
                   style={{ userSelect: "none" }}>
                   {lines.length === 1
                     ? <tspan fontSize={fSize}>{lines[0]}</tspan>
