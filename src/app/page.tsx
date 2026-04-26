@@ -18,13 +18,13 @@ const JETTON_MASTER     = process.env.NEXT_PUBLIC_JETTON_MASTER ?? "";
 
 // ─── Prize config ─────────────────────────────────────────────────────────────
 const PRIZES = [
-  { label: "JACKPOT",   tier: 0, color: "#FFD700", dark: "#7a6200" },
-  { label: "BIG WIN",   tier: 1, color: "#FF6B35", dark: "#7a3319" },
-  { label: "TON WIN",   tier: 2, color: "#4ECDC4", dark: "#1e6460" },
-  { label: "SM BIG",    tier: 3, color: "#A855F7", dark: "#531a82" },
-  { label: "SM SMALL",  tier: 4, color: "#8B5CF6", dark: "#3b1a82" },
-  { label: "FREE SPIN", tier: 5, color: "#2ED573", dark: "#1a6b3a" },
-  { label: "TRY AGAIN", tier: 6, color: "#374151", dark: "#1a1f27" },
+  { label: "JACKPOT",   tier: 0, color: "#FFD700", dark: "#FF8C00" },
+  { label: "BIG WIN",   tier: 1, color: "#FF4785", dark: "#CC1155" },
+  { label: "TON WIN",   tier: 2, color: "#00E5FF", dark: "#0099BB" },
+  { label: "SM BIG",    tier: 3, color: "#CC44FF", dark: "#8800CC" },
+  { label: "SM SMALL",  tier: 4, color: "#FF7A00", dark: "#CC4400" },
+  { label: "FREE SPIN", tier: 5, color: "#00E676", dark: "#00AA44" },
+  { label: "TRY AGAIN", tier: 6, color: "#FF6B6B", dark: "#CC2222" },
 ];
 
 const SEGMENTS = [
@@ -152,13 +152,13 @@ interface Particle {
 let _pid = 0;
 function burst(tier: number, n: number): Particle[] {
   const palettes = [
-    ["#FFD700", "#FF6B35", "#FFF8DC", "#FFEC6E"],   // 0 jackpot
-    ["#FF6B35", "#FF9D6B", "#FFA07A", "#FFD700"],   // 1 big win
-    ["#4ECDC4", "#7EDDD8", "#B2EBF2", "#00E5D8"],   // 2 ton win
-    ["#A855F7", "#C77DFF", "#E0B4FF", "#7C3AED"],   // 3 sm big
-    ["#8B5CF6", "#A78BFA", "#C4B5FD", "#7C3AED"],   // 4 sm small
-    ["#2ED573", "#7BF0A8", "#B4F8CE", "#00CC55"],   // 5 free spin
-    ["#4B5563", "#6B7280", "#374151"],               // 6 try again
+    ["#FFD700", "#FF8C00", "#FFF8DC", "#FFEC6E"],   // 0 jackpot
+    ["#FF4785", "#FF99BB", "#FFB3CC", "#CC1155"],   // 1 big win
+    ["#00E5FF", "#66F0FF", "#B3F8FF", "#0099BB"],   // 2 ton win
+    ["#CC44FF", "#E088FF", "#F0CCFF", "#8800CC"],   // 3 sm big
+    ["#FF7A00", "#FFA855", "#FFCC99", "#CC4400"],   // 4 sm small
+    ["#00E676", "#66F5A8", "#B3FAD4", "#00AA44"],   // 5 free spin
+    ["#FF6B6B", "#FF9999", "#FFCCCC", "#CC2222"],   // 6 try again
   ];
   const pal = palettes[tier] ?? palettes[4];
   return Array.from({ length: n }, () => {
@@ -245,10 +245,11 @@ function SpinWheel({ spinning, winTier, onSpinEnd, onTick, size }: {
     const canvas = canvasRef.current; if (!canvas) return;
     const ctx = canvas.getContext("2d")!;
     const W = canvas.width, H = canvas.height;
-    const cx = W / 2, cy = H / 2, r = Math.min(W, H) / 2 - 10;
+    const cx = W / 2, cy = H / 2, r = Math.min(W, H) / 2 - 20;
     ctx.clearRect(0, 0, W, H);
     const slice = (2 * Math.PI) / SEGMENTS.length;
 
+    // ── Segments ──────────────────────────────────────────────────────────────
     SEGMENTS.forEach((seg, i) => {
       const s = ang + i * slice, e = s + slice;
       const hot = i === highlight;
@@ -256,59 +257,86 @@ function SpinWheel({ spinning, winTier, onSpinEnd, onTick, size }: {
       ctx.moveTo(cx, cy);
       ctx.arc(cx, cy, r, s, e);
       ctx.closePath();
-      if (hot) {
-        ctx.shadowColor = seg.color; ctx.shadowBlur = 28;
-        // Brighter fill for lit segment
-        const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-        grad.addColorStop(0, seg.color + "cc");
-        grad.addColorStop(1, seg.color);
-        ctx.fillStyle = grad;
-      } else {
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = seg.color;
-      }
+
+      // Candy radial gradient
+      const grad = ctx.createRadialGradient(cx, cy, r * 0.15, cx, cy, r);
+      grad.addColorStop(0, "#ffffffcc");
+      grad.addColorStop(0.35, seg.color);
+      grad.addColorStop(1, seg.dark ?? seg.color);
+      ctx.fillStyle = grad;
+      if (hot) { ctx.shadowColor = seg.color; ctx.shadowBlur = 22; }
       ctx.fill();
       ctx.shadowBlur = 0;
-      ctx.strokeStyle = "#000009"; ctx.lineWidth = 2; ctx.stroke();
 
-      // Label
+      ctx.strokeStyle = "#ffffff99"; ctx.lineWidth = 1.5; ctx.stroke();
+
+      // Label — outline + fill for readability
       ctx.save();
       ctx.translate(cx, cy);
       ctx.rotate(s + slice / 2);
       ctx.textAlign = "right";
-      ctx.font = `bold ${hot ? 11 : 10}px 'Space Mono',monospace`;
+      ctx.font = `bold ${hot ? 11 : 9}px 'Space Mono',monospace`;
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "#00000088";
+      ctx.strokeText(seg.label, r - 8, 4);
       ctx.fillStyle = "#fff";
-      if (hot) { ctx.shadowColor = "#fff"; ctx.shadowBlur = 10; }
-      ctx.fillText(seg.label, r - 10, 4);
+      if (hot) { ctx.shadowColor = "#fff"; ctx.shadowBlur = 8; }
+      ctx.fillText(seg.label, r - 8, 4);
       ctx.restore();
     });
 
-    // Outer decorative rings
-    [{ r: r + 1, c: "#ffffff22", w: 5 }, { r: r + 5, c: "#FFD70033", w: 2 }].forEach(({ r: rr, c, w }) => {
-      ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 2 * Math.PI);
-      ctx.strokeStyle = c; ctx.lineWidth = w; ctx.stroke();
-    });
+    // ── Pink outer ring ────────────────────────────────────────────────────────
+    ctx.beginPath(); ctx.arc(cx, cy, r + 2, 0, 2 * Math.PI);
+    ctx.strokeStyle = "#FF4785"; ctx.lineWidth = 7; ctx.stroke();
 
-    // Center hub
-    const hub = ctx.createRadialGradient(cx, cy, 0, cx, cy, 24);
-    hub.addColorStop(0, "#FFD70077"); hub.addColorStop(1, "#0a0a0f");
-    ctx.beginPath(); ctx.arc(cx, cy, 24, 0, 2 * Math.PI);
-    ctx.fillStyle = hub; ctx.fill();
-    ctx.strokeStyle = "#FFD70099"; ctx.lineWidth = 2; ctx.stroke();
-    ctx.fillStyle = "#FFD700"; ctx.font = "bold 14px sans-serif";
-    ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText("S", cx, cy); ctx.textBaseline = "alphabetic";
+    // ── Pearl dots ────────────────────────────────────────────────────────────
+    const pearlCount = 26;
+    for (let i = 0; i < pearlCount; i++) {
+      const a = (i / pearlCount) * 2 * Math.PI - Math.PI / 2;
+      const px = cx + (r + 12) * Math.cos(a);
+      const py = cy + (r + 12) * Math.sin(a);
+      const pearlGrad = ctx.createRadialGradient(px - 1.5, py - 1.5, 0.5, px, py, 5);
+      pearlGrad.addColorStop(0, "#fff");
+      pearlGrad.addColorStop(1, i % 2 === 0 ? "#ffb3cc" : "#ff6699");
+      ctx.beginPath(); ctx.arc(px, py, 5, 0, 2 * Math.PI);
+      ctx.fillStyle = pearlGrad; ctx.fill();
+      ctx.strokeStyle = "#cc3366"; ctx.lineWidth = 0.8; ctx.stroke();
+    }
 
-    // Pointer
-    const pColor = highlight >= 0 ? "#FFD700" : "#FFD700";
+    // ── Peppermint hub ────────────────────────────────────────────────────────
+    const hubR = 22;
+    const stripes = 6;
+    for (let i = 0; i < stripes; i++) {
+      const sa = (i / stripes) * 2 * Math.PI;
+      const ea = sa + Math.PI / stripes;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, hubR, sa, ea);
+      ctx.closePath();
+      ctx.fillStyle = i % 2 === 0 ? "#FF1744" : "#ffffff";
+      ctx.fill();
+    }
+    ctx.beginPath(); ctx.arc(cx, cy, hubR, 0, 2 * Math.PI);
+    ctx.strokeStyle = "#CC0022"; ctx.lineWidth = 2; ctx.stroke();
+    // Small gloss dot
+    ctx.beginPath(); ctx.arc(cx - 6, cy - 6, 5, 0, 2 * Math.PI);
+    ctx.fillStyle = "#ffffff44"; ctx.fill();
+
+    // ── Candy pointer ─────────────────────────────────────────────────────────
     ctx.save();
-    ctx.shadowColor = pColor; ctx.shadowBlur = highlight >= 0 ? 24 : 14;
+    ctx.shadowColor = "#FF1744"; ctx.shadowBlur = 16;
     ctx.beginPath();
-    ctx.moveTo(cx, cy - r - 4);
-    ctx.lineTo(cx - 13, cy - r + 18);
-    ctx.lineTo(cx + 13, cy - r + 18);
+    ctx.moveTo(cx, cy - r - 2);
+    ctx.lineTo(cx - 11, cy - r + 22);
+    ctx.lineTo(cx + 11, cy - r + 22);
     ctx.closePath();
-    ctx.fillStyle = pColor; ctx.fill();
+    ctx.fillStyle = "#FF1744"; ctx.fill();
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
+    // Pointer shine
+    ctx.beginPath();
+    ctx.moveTo(cx - 3, cy - r);
+    ctx.lineTo(cx - 6, cy - r + 14);
+    ctx.strokeStyle = "#ffffff55"; ctx.lineWidth = 2; ctx.stroke();
     ctx.restore();
   }, []);
 
@@ -373,22 +401,22 @@ function SpinWheel({ spinning, winTier, onSpinEnd, onTick, size }: {
     return () => cancelAnimationFrame(rafRef.current);
   }, [spinning, winTier, draw, onSpinEnd, onTick]);
 
+  const winColor = winTier !== null ? (PRIZES.find(p => p.tier === winTier)?.color ?? "#FFD700") : "#FFD700";
   return (
     <div style={{
       position: "relative",
-      width: size + 40, height: size + 40,
+      width: size + 50, height: size + 50,
       display: "flex", alignItems: "center", justifyContent: "center",
       flexShrink: 0,
     }}>
-      <LEDRing spinning={spinning} winTier={winTier} />
       <div style={{
-        transform: pulsing ? "scale(1.045)" : "scale(1)",
+        transform: pulsing ? "scale(1.04)" : "scale(1)",
         transition: pulsing ? "none" : "transform 0.12s ease-out",
         willChange: "transform",
         borderRadius: "50%",
         boxShadow: spinning
-          ? "0 0 32px #FFD70077, 0 0 8px #ffffff44"
-          : "0 0 12px #FFD70033",
+          ? `0 0 40px ${winColor}88, 0 0 80px ${winColor}33`
+          : "0 0 20px #FF478566, 0 0 40px #FF478522",
       }}>
         <canvas ref={canvasRef} width={size} height={size} style={{
           borderRadius: "50%",
