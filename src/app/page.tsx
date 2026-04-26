@@ -500,7 +500,7 @@ function CasinoBackground() {
           position: "absolute", inset: 0,
           width: "100%", height: "100%",
           objectFit: "cover",
-          opacity: 0.55,
+          opacity: 0.75,
         }}
       >
         <source src="/bg.mp4" type="video/mp4" />
@@ -508,7 +508,7 @@ function CasinoBackground() {
       {/* Dark tint so UI stays readable */}
       <div style={{
         position: "absolute", inset: 0,
-        background: "linear-gradient(to bottom, #00000077 0%, #00000044 50%, #00000088 100%)",
+        background: "linear-gradient(to bottom, #00000044 0%, #00000022 50%, #00000055 100%)",
       }} />
       {/* Neon grid overlay */}
       <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0.12 }} preserveAspectRatio="none">
