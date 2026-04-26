@@ -251,17 +251,15 @@ function SpinWheel({ spinning, winTier, onSpinEnd, onTick, size }: {
   }, [spinning, winTier, slice, onTick, onSpinEnd, setWheelAngle]);
 
   return (
-    <div style={{ position: "relative", width: padded, height: padded, flexShrink: 0 }}>
-      {/* Spinning wheel image */}
+    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
+      {/* Spinning wheel — fills container fully */}
       <div
         ref={wheelRef}
         style={{
-          position: "absolute",
-          top: 24, left: 24,
-          width: size, height: size,
+          width: "100%", height: "100%",
           borderRadius: "50%",
           overflow: "hidden",
-          transformOrigin: "center center",
+          transformOrigin: "50% 50%",
           boxShadow: "0 0 32px #FF478566, 0 0 64px #FF478522",
         }}
       >
@@ -273,26 +271,25 @@ function SpinWheel({ spinning, winTier, onSpinEnd, onTick, size }: {
         />
       </div>
 
-      {/* Fixed pointer + outer glow overlay */}
+      {/* Fixed pointer — small SVG sitting at top edge, overflow visible */}
       <svg
-        width={padded} height={padded}
-        style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none" }}
+        width={size} height={40}
+        style={{ position: "absolute", top: -8, left: 0, pointerEvents: "none", overflow: "visible" }}
       >
         <defs>
-          <filter id="ptrglow" x="-50%" y="-50%" width="200%" height="200%">
+          <filter id="ptrglow" x="-60%" y="-60%" width="220%" height="220%">
             <feGaussianBlur stdDeviation="4" result="b"/>
             <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
           </filter>
         </defs>
-        {/* Candy pointer */}
         <polygon
-          points={`${cx},${cy - r - 4} ${cx - 13},${cy - r + 26} ${cx + 13},${cy - r + 26}`}
+          points={`${size / 2},8 ${size / 2 - 13},34 ${size / 2 + 13},34`}
           fill="#FF1744" stroke="white" strokeWidth="2.5"
           filter="url(#ptrglow)"
         />
         <line
-          x1={cx - 3} y1={cy - r - 1}
-          x2={cx - 7} y2={cy - r + 18}
+          x1={size / 2 - 3} y1={10}
+          x2={size / 2 - 7} y2={28}
           stroke="rgba(255,255,255,0.6)" strokeWidth="2.5" strokeLinecap="round"
         />
       </svg>
