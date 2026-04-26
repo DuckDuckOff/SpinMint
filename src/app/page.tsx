@@ -312,18 +312,25 @@ function SpinWheel({ spinning, winTier, onSpinEnd, onTick, size }: {
     ctx.restore();
   }, []);
 
-  useEffect(() => { draw(angle, litSeg); }, [angle, litSeg, draw]);
+  useEffect(() => { draw(angle, litSeg); }, [angle, litSeg, draw, size]);
 
-  // iOS WebView sometimes silently drops the first canvas paint — force a repaint after mount
+  // Telegram WebView drops canvas paints silently — retry across 2s
   useEffect(() => {
-    const id = requestAnimationFrame(() => {
+    let cancelled = false;
+    const tryPaint = (attempt: number) => {
+      if (cancelled) return;
       const canvas = canvasRef.current;
       if (canvas) {
-        canvas.width = canvas.width; // resets + activates the canvas layer
+        canvas.width = canvas.width;
         draw(0, -1);
       }
-    });
-    return () => cancelAnimationFrame(id);
+      if (attempt < 8) setTimeout(() => tryPaint(attempt + 1), attempt * 200 + 50);
+    };
+    tryPaint(0);
+    // Also repaint on visibility change (Telegram hides/shows the webview)
+    const onVisible = () => { if (!document.hidden) tryPaint(0); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { cancelled = true; document.removeEventListener("visibilitychange", onVisible); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
