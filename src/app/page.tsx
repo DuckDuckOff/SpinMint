@@ -18,13 +18,13 @@ const JETTON_MASTER     = process.env.NEXT_PUBLIC_JETTON_MASTER ?? "";
 
 // ─── Prize config ─────────────────────────────────────────────────────────────
 const PRIZES = [
-  { label: "JACKPOT",   tier: 0, color: "#FFD700", dark: "#FF8C00" },
-  { label: "BIG WIN",   tier: 1, color: "#FF4785", dark: "#CC1155" },
-  { label: "TON WIN",   tier: 2, color: "#00E5FF", dark: "#0099BB" },
-  { label: "SM BIG",    tier: 3, color: "#CC44FF", dark: "#8800CC" },
-  { label: "SM SMALL",  tier: 4, color: "#FF7A00", dark: "#CC4400" },
-  { label: "FREE SPIN", tier: 5, color: "#00E676", dark: "#00AA44" },
-  { label: "TRY AGAIN", tier: 6, color: "#FF6B6B", dark: "#CC2222" },
+  { label: "JACKPOT",  tier: 0, color: "#FFD700", dark: "#FF8C00" },
+  { label: "5 TON",    tier: 1, color: "#FF4785", dark: "#CC1155" },
+  { label: "1.5 TON",  tier: 2, color: "#00E5FF", dark: "#0099BB" },
+  { label: "3K $SM",   tier: 3, color: "#CC44FF", dark: "#8800CC" },
+  { label: "2K $SM",   tier: 4, color: "#FF7A00", dark: "#CC4400" },
+  { label: "FREE!",    tier: 5, color: "#00E676", dark: "#00AA44" },
+  { label: "50 $SM",   tier: 6, color: "#FF6B6B", dark: "#CC2222" },
 ];
 
 const SEGMENTS = [
@@ -137,12 +137,6 @@ function fmt(nanotons: bigint) {
   return `${parseFloat(fromNano(nanotons)).toFixed(2)} TON`;
 }
 
-function getSegUnderPointer(angle: number): number {
-  const slice = (2 * Math.PI) / SEGMENTS.length;
-  const rel = ((-Math.PI / 2 - angle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
-  return Math.floor(rel / slice) % SEGMENTS.length;
-}
-
 // ─── Particle system ──────────────────────────────────────────────────────────
 interface Particle {
   id: number; x: number; y: number; vx: number; vy: number;
@@ -175,49 +169,13 @@ function burst(tier: number, n: number): Particle[] {
   });
 }
 
-// ─── LED Ring ─────────────────────────────────────────────────────────────────
-const LEDS = 24;
-const LED_PAL = ["#FFD700","#FF6B35","#4ECDC4","#A855F7","#FF4757","#2ED573","#1E90FF","#FF69B4"];
-
-function LEDRing({ spinning, winTier }: { spinning: boolean; winTier: number | null }) {
-  const [frame, setFrame] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setFrame(f => f + 1), spinning ? 50 : 180);
-    return () => clearInterval(id);
-  }, [spinning]);
-
-  const tierColor = winTier !== null && winTier < 4 ? PRIZES[winTier].color : null;
-
-  return (
-    <div style={{ position: "absolute", inset: -18, borderRadius: "50%", pointerEvents: "none" }}>
-      {Array.from({ length: LEDS }, (_, i) => {
-        const a = (i / LEDS) * 2 * Math.PI - Math.PI / 2;
-        const x = parseFloat((50 + 50 * Math.cos(a)).toFixed(4));
-        const y = parseFloat((50 + 50 * Math.sin(a)).toFixed(4));
-        const color = tierColor ?? LED_PAL[(i + frame) % LED_PAL.length];
-        const lit = spinning ? (i + frame) % 2 === 0 : (i * 3 + frame) % 7 < 2;
-        return (
-          <div key={i} style={{
-            position: "absolute", left: `${x}%`, top: `${y}%`,
-            transform: "translate(-50%,-50%)",
-            width: 7, height: 7, borderRadius: "50%",
-            background: lit ? color : "#111",
-            boxShadow: lit ? `0 0 8px 3px ${color}99` : "none",
-            transition: "background 0.08s, box-shadow 0.08s",
-          }} />
-        );
-      })}
-    </div>
-  );
-}
-
-// ─── Wheel ────────────────────────────────────────────────────────────────────
+// ─── Wheel (SVG) ──────────────────────────────────────────────────────────────
 function useWheelSize() {
-  const [size, setSize] = useState(220);
+  const [size, setSize] = useState(260);
   useEffect(() => {
     const calc = () => {
       const available = Math.min(window.innerHeight - 340, window.innerWidth - 40);
-      setSize(Math.max(180, Math.min(260, available)));
+      setSize(Math.max(212, Math.min(307, available)));
     };
     calc();
     window.addEventListener("resize", calc);
@@ -226,204 +184,168 @@ function useWheelSize() {
   return size;
 }
 
-const WHEEL_SIZE = 220; // fallback for SSR
-
 function SpinWheel({ spinning, winTier, onSpinEnd, onTick, size }: {
   spinning: boolean; winTier: number | null;
   onSpinEnd: () => void; onTick: (speed: number) => void;
   size: number;
 }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const angleRef  = useRef(0);
-  const rafRef    = useRef<number>(0);
+  const wheelRef   = useRef<SVGGElement>(null);
+  const angleRef   = useRef(0);
+  const rafRef     = useRef<number>(0);
   const lastSegRef = useRef(-1);
-  const [angle, setAngle] = useState(0);
-  const [pulsing, setPulsing] = useState(false);
-  const [litSeg, setLitSeg] = useState(-1);
+  const [hotSeg, setHotSeg] = useState(-1);
 
-  const draw = useCallback((ang: number, highlight: number) => {
-    const canvas = canvasRef.current; if (!canvas) return;
-    const ctx = canvas.getContext("2d")!;
-    const W = canvas.width, H = canvas.height;
-    const cx = W / 2, cy = H / 2, r = Math.min(W, H) / 2 - 20;
-    ctx.clearRect(0, 0, W, H);
-    const slice = (2 * Math.PI) / SEGMENTS.length;
+  const svgSize = size + 48;
+  const cx      = svgSize / 2;
+  const cy      = svgSize / 2;
+  const r       = size / 2 - 4;
+  const slice   = (2 * Math.PI) / SEGMENTS.length;
 
-    // ── Segments ──────────────────────────────────────────────────────────────
-    SEGMENTS.forEach((seg, i) => {
-      const s = ang + i * slice, e = s + slice;
-      const hot = i === highlight;
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.arc(cx, cy, r, s, e);
-      ctx.closePath();
-
-      // Candy radial gradient
-      const grad = ctx.createRadialGradient(cx, cy, r * 0.15, cx, cy, r);
-      grad.addColorStop(0, "#ffffffcc");
-      grad.addColorStop(0.35, seg.color);
-      grad.addColorStop(1, seg.dark ?? seg.color);
-      ctx.fillStyle = grad;
-      if (hot) { ctx.shadowColor = seg.color; ctx.shadowBlur = 22; }
-      ctx.fill();
-      ctx.shadowBlur = 0;
-
-      ctx.strokeStyle = "#ffffff99"; ctx.lineWidth = 1.5; ctx.stroke();
-
-      // Label — outline + fill for readability
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(s + slice / 2);
-      ctx.textAlign = "right";
-      ctx.font = `bold ${hot ? 11 : 9}px 'Space Mono',monospace`;
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = "#00000088";
-      ctx.strokeText(seg.label, r - 8, 4);
-      ctx.fillStyle = "#fff";
-      if (hot) { ctx.shadowColor = "#fff"; ctx.shadowBlur = 8; }
-      ctx.fillText(seg.label, r - 8, 4);
-      ctx.restore();
-    });
-
-    // ── Pink outer ring ────────────────────────────────────────────────────────
-    ctx.beginPath(); ctx.arc(cx, cy, r + 2, 0, 2 * Math.PI);
-    ctx.strokeStyle = "#FF4785"; ctx.lineWidth = 7; ctx.stroke();
-
-    // ── Pearl dots ────────────────────────────────────────────────────────────
-    const pearlCount = 26;
-    for (let i = 0; i < pearlCount; i++) {
-      const a = (i / pearlCount) * 2 * Math.PI - Math.PI / 2;
-      const px = cx + (r + 12) * Math.cos(a);
-      const py = cy + (r + 12) * Math.sin(a);
-      const pearlGrad = ctx.createRadialGradient(px - 1.5, py - 1.5, 0.5, px, py, 5);
-      pearlGrad.addColorStop(0, "#fff");
-      pearlGrad.addColorStop(1, i % 2 === 0 ? "#ffb3cc" : "#ff6699");
-      ctx.beginPath(); ctx.arc(px, py, 5, 0, 2 * Math.PI);
-      ctx.fillStyle = pearlGrad; ctx.fill();
-      ctx.strokeStyle = "#cc3366"; ctx.lineWidth = 0.8; ctx.stroke();
+  const setWheelAngle = useCallback((ang: number) => {
+    if (wheelRef.current) {
+      const deg = (ang * 180) / Math.PI;
+      wheelRef.current.setAttribute("transform", `rotate(${deg.toFixed(3)}, ${cx}, ${cy})`);
     }
+  }, [cx, cy]);
 
-    // ── Peppermint hub ────────────────────────────────────────────────────────
-    const hubR = 22;
-    const stripes = 6;
-    for (let i = 0; i < stripes; i++) {
-      const sa = (i / stripes) * 2 * Math.PI;
-      const ea = sa + Math.PI / stripes;
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.arc(cx, cy, hubR, sa, ea);
-      ctx.closePath();
-      ctx.fillStyle = i % 2 === 0 ? "#FF1744" : "#ffffff";
-      ctx.fill();
-    }
-    ctx.beginPath(); ctx.arc(cx, cy, hubR, 0, 2 * Math.PI);
-    ctx.strokeStyle = "#CC0022"; ctx.lineWidth = 2; ctx.stroke();
-    // Small gloss dot
-    ctx.beginPath(); ctx.arc(cx - 6, cy - 6, 5, 0, 2 * Math.PI);
-    ctx.fillStyle = "#ffffff44"; ctx.fill();
-
-    // ── Candy pointer ─────────────────────────────────────────────────────────
-    ctx.save();
-    ctx.shadowColor = "#FF1744"; ctx.shadowBlur = 16;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy - r - 2);
-    ctx.lineTo(cx - 11, cy - r + 22);
-    ctx.lineTo(cx + 11, cy - r + 22);
-    ctx.closePath();
-    ctx.fillStyle = "#FF1744"; ctx.fill();
-    ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
-    // Pointer shine
-    ctx.beginPath();
-    ctx.moveTo(cx - 3, cy - r);
-    ctx.lineTo(cx - 6, cy - r + 14);
-    ctx.strokeStyle = "#ffffff55"; ctx.lineWidth = 2; ctx.stroke();
-    ctx.restore();
-  }, []);
-
-  useEffect(() => { draw(angle, litSeg); }, [angle, litSeg, draw, size]);
-
-  // Telegram WebView drops canvas paints silently — retry across 2s
-  useEffect(() => {
-    let cancelled = false;
-    const tryPaint = (attempt: number) => {
-      if (cancelled) return;
-      const canvas = canvasRef.current;
-      if (canvas) {
-        canvas.width = canvas.width;
-        draw(0, -1);
-      }
-      if (attempt < 8) setTimeout(() => tryPaint(attempt + 1), attempt * 200 + 50);
-    };
-    tryPaint(0);
-    // Also repaint on visibility change (Telegram hides/shows the webview)
-    const onVisible = () => { if (!document.hidden) tryPaint(0); };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => { cancelled = true; document.removeEventListener("visibilitychange", onVisible); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useEffect(() => { setWheelAngle(angleRef.current); }, [setWheelAngle, size]);
 
   useEffect(() => {
     if (!spinning) return;
-    const slice = (2 * Math.PI) / SEGMENTS.length;
     const targetIdx = winTier !== null
-      ? SEGMENTS.findIndex(s => s.tier === winTier)
+      ? Math.max(0, SEGMENTS.findIndex(s => s.tier === winTier))
       : Math.floor(Math.random() * SEGMENTS.length);
     const targetAngle = -Math.PI / 2 - (targetIdx * slice + slice / 2);
-    const spins = 6 + Math.random() * 3;
-    const finalAngle = targetAngle - spins * 2 * Math.PI;
-    const startAng = angleRef.current;
-    const duration = 4200;
-    const startTime = performance.now();
-
+    const spins       = 6 + Math.random() * 3;
+    const finalAngle  = targetAngle - spins * 2 * Math.PI;
+    const startAng    = angleRef.current;
+    const duration    = 4200;
+    const startTime   = performance.now();
     function ease(t: number) { return 1 - Math.pow(1 - t, 4); }
-
     function frame(now: number) {
-      const elapsed = now - startTime;
-      const t = Math.min(elapsed / duration, 1);
-      const eased = ease(t);
-      const ang = startAng + (finalAngle - startAng) * eased;
-      const speed = 1 - eased; // 1=fast, 0=stopped
-      const seg = getSegUnderPointer(ang);
+      const t      = Math.min((now - startTime) / duration, 1);
+      const ang    = startAng + (finalAngle - startAng) * ease(t);
+      const rel    = ((-ang - Math.PI / 2) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+      const seg    = Math.floor(rel / slice) % SEGMENTS.length;
       if (seg !== lastSegRef.current) {
         lastSegRef.current = seg;
-        onTick(speed);
-        setLitSeg(seg);
-        setPulsing(true);
-        setTimeout(() => { setPulsing(false); setLitSeg(-1); }, 90);
+        onTick(1 - ease(t));
+        setHotSeg(seg);
+        setTimeout(() => setHotSeg(-1), 100);
       }
       angleRef.current = ang;
-      setAngle(ang);
-      draw(ang, seg);
+      setWheelAngle(ang);
       if (t < 1) { rafRef.current = requestAnimationFrame(frame); }
-      else { draw(finalAngle, -1); onSpinEnd(); }
+      else { setWheelAngle(finalAngle); onSpinEnd(); }
     }
     rafRef.current = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [spinning, winTier, draw, onSpinEnd, onTick]);
+  }, [spinning, winTier, slice, onTick, onSpinEnd, setWheelAngle]);
 
-  const winColor = winTier !== null ? (PRIZES.find(p => p.tier === winTier)?.color ?? "#FFD700") : "#FFD700";
+  const segArc = (i: number) => {
+    const sa = i * slice, ea = (i + 1) * slice;
+    const sx = cx + r * Math.cos(sa), sy = cy + r * Math.sin(sa);
+    const ex = cx + r * Math.cos(ea), ey = cy + r * Math.sin(ea);
+    return `M ${cx} ${cy} L ${sx.toFixed(2)} ${sy.toFixed(2)} A ${r} ${r} 0 0 1 ${ex.toFixed(2)} ${ey.toFixed(2)} Z`;
+  };
+
+  const mintArc = (i: number, hr: number) => {
+    const sa = (i / 6) * 2 * Math.PI, ea = sa + Math.PI / 6;
+    const sx = cx + hr * Math.cos(sa), sy = cy + hr * Math.sin(sa);
+    const ex = cx + hr * Math.cos(ea), ey = cy + hr * Math.sin(ea);
+    return `M ${cx} ${cy} L ${sx.toFixed(2)} ${sy.toFixed(2)} A ${hr} ${hr} 0 0 1 ${ex.toFixed(2)} ${ey.toFixed(2)} Z`;
+  };
+
   return (
-    <div style={{
-      position: "relative",
-      width: size + 50, height: size + 50,
-      display: "flex", alignItems: "center", justifyContent: "center",
-      flexShrink: 0,
-    }}>
-      <div style={{
-        transform: pulsing ? "scale(1.04)" : "scale(1)",
-        transition: pulsing ? "none" : "transform 0.12s ease-out",
-        willChange: "transform",
-        borderRadius: "50%",
-        boxShadow: spinning
-          ? `0 0 40px ${winColor}88, 0 0 80px ${winColor}33`
-          : "0 0 20px #FF478566, 0 0 40px #FF478522",
-      }}>
-        <canvas ref={canvasRef} width={size} height={size} style={{
-          borderRadius: "50%",
-          display: "block",
-          transform: "translateZ(0)",
-        }} />
-      </div>
+    <div style={{ flexShrink: 0 }}>
+      <svg width={svgSize} height={svgSize} style={{ display: "block", overflow: "visible" }}>
+        <defs>
+          {SEGMENTS.map((seg, i) => (
+            <radialGradient key={i} id={`sg-${i}`} cx={cx} cy={cy} r={r} gradientUnits="userSpaceOnUse">
+              <stop offset="0%"   stopColor="#ffffff" stopOpacity="0.9" />
+              <stop offset="28%"  stopColor={seg.color} />
+              <stop offset="100%" stopColor={seg.dark ?? seg.color} />
+            </radialGradient>
+          ))}
+          <radialGradient id="pearl-g" cx="35%" cy="30%" r="65%">
+            <stop offset="0%" stopColor="#fff" />
+            <stop offset="100%" stopColor="#ffaacc" />
+          </radialGradient>
+          <filter id="wglow" x="-25%" y="-25%" width="150%" height="150%">
+            <feGaussianBlur stdDeviation="5" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="ptrglow" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="4" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+
+        {/* Outer candy glow */}
+        <circle cx={cx} cy={cy} r={r + 22} fill="none" stroke="#FF478533" strokeWidth="20" />
+        {/* Pink border ring */}
+        <circle cx={cx} cy={cy} r={r + 8}  fill="none" stroke="#FF4785"   strokeWidth="10" />
+        {/* Inner white edge */}
+        <circle cx={cx} cy={cy} r={r + 2}  fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="2" />
+
+        {/* Rotating wheel */}
+        <g ref={wheelRef}>
+          {SEGMENTS.map((seg, i) => {
+            const isHot   = i === hotSeg;
+            const midAng  = i * slice + slice / 2;
+            const labelR  = r * 0.63;
+            const lx      = cx + labelR * Math.cos(midAng);
+            const ly      = cy + labelR * Math.sin(midAng);
+            const lDeg    = midAng * 180 / Math.PI + 90;
+            const fSize   = r > 120 ? 12 : 10;
+            return (
+              <g key={i}>
+                <path d={segArc(i)}
+                  fill={`url(#sg-${i})`}
+                  stroke="rgba(255,255,255,0.6)" strokeWidth="1.5"
+                  filter={isHot ? "url(#wglow)" : undefined} />
+                <text x={lx.toFixed(1)} y={ly.toFixed(1)}
+                  textAnchor="middle" dominantBaseline="middle"
+                  transform={`rotate(${lDeg.toFixed(1)}, ${lx.toFixed(1)}, ${ly.toFixed(1)})`}
+                  fontSize={isHot ? fSize + 2 : fSize}
+                  fontWeight="bold" fontFamily="'Space Mono', monospace"
+                  fill="white" stroke="rgba(0,0,0,0.75)" strokeWidth="3" paintOrder="stroke"
+                  style={{ userSelect: "none" }}>
+                  {seg.label}
+                </text>
+              </g>
+            );
+          })}
+        </g>
+
+        {/* Pearl dots (fixed) */}
+        {Array.from({ length: 30 }, (_, i) => {
+          const a  = (i / 30) * 2 * Math.PI - Math.PI / 2;
+          const px = cx + (r + 18) * Math.cos(a);
+          const py = cy + (r + 18) * Math.sin(a);
+          return <circle key={i} cx={px.toFixed(1)} cy={py.toFixed(1)} r="5.5"
+            fill={i % 2 === 0 ? "url(#pearl-g)" : "#ff6699"}
+            stroke="#cc2255" strokeWidth="0.8" />;
+        })}
+
+        {/* Peppermint hub (fixed) */}
+        {Array.from({ length: 6 }, (_, i) => (
+          <path key={i} d={mintArc(i, 24)}
+            fill={i % 2 === 0 ? "#FF1744" : "#ffffff"} />
+        ))}
+        <circle cx={cx} cy={cy} r="24" fill="none" stroke="#CC0022" strokeWidth="2.5" />
+        <ellipse cx={cx - 7} cy={cy - 8} rx="8" ry="5"
+          fill="rgba(255,255,255,0.32)"
+          transform={`rotate(-30, ${cx - 7}, ${cy - 8})`} />
+
+        {/* Candy pointer (fixed) */}
+        <polygon
+          points={`${cx},${cy - r - 5} ${cx - 13},${cy - r + 26} ${cx + 13},${cy - r + 26}`}
+          fill="#FF1744" stroke="white" strokeWidth="2.5"
+          filter="url(#ptrglow)" />
+        <line x1={cx - 3} y1={cy - r - 2} x2={cx - 7} y2={cy - r + 18}
+          stroke="rgba(255,255,255,0.55)" strokeWidth="2.5" strokeLinecap="round" />
+      </svg>
     </div>
   );
 }
