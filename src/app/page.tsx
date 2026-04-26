@@ -27,10 +27,20 @@ const PRIZES = [
   { label: "50 $SM",   tier: 6, color: "#FF6B6B", dark: "#CC2222" },
 ];
 
+// 12 segments clockwise from top — matches wheel image
 const SEGMENTS = [
-  PRIZES[0], PRIZES[2], PRIZES[6], PRIZES[1],
-  PRIZES[3], PRIZES[5], PRIZES[4], PRIZES[6],
-  PRIZES[2], PRIZES[4], PRIZES[1], PRIZES[5],
+  PRIZES[3], // 3K $SM
+  PRIZES[6], // 50 $SM
+  PRIZES[2], // 1.5 TON
+  PRIZES[6], // 50 $SM
+  PRIZES[4], // 2K $SM
+  PRIZES[5], // FREE!
+  PRIZES[6], // 50 $SM
+  PRIZES[3], // 3K $SM
+  PRIZES[6], // 50 $SM
+  PRIZES[1], // 5 TON
+  PRIZES[4], // 2K $SM
+  PRIZES[0], // JACKPOT
 ];
 
 type Phase = "idle" | "minting" | "spinning" | "reveal";
@@ -184,29 +194,29 @@ function useWheelSize() {
   return size;
 }
 
+const WHEEL_IMG = "https://res.cloudinary.com/dr38zeh9b/image/upload/v1777213161/Screenshot_2026-04-27_001848_lxiozl.png";
+
 function SpinWheel({ spinning, winTier, onSpinEnd, onTick, size }: {
   spinning: boolean; winTier: number | null;
   onSpinEnd: () => void; onTick: (speed: number) => void;
   size: number;
 }) {
-  const wheelRef   = useRef<SVGGElement>(null);
+  const wheelRef   = useRef<HTMLDivElement>(null);
   const angleRef   = useRef(0);
   const rafRef     = useRef<number>(0);
   const lastSegRef = useRef(-1);
-  const [hotSeg, setHotSeg] = useState(-1);
 
-  const svgSize = size + 48;
-  const cx      = svgSize / 2;
-  const cy      = svgSize / 2;
-  const r       = size / 2 - 4;
-  const slice   = (2 * Math.PI) / SEGMENTS.length;
+  const padded = size + 48;
+  const cx     = padded / 2;
+  const cy     = padded / 2;
+  const r      = size / 2;
+  const slice  = (2 * Math.PI) / SEGMENTS.length;
 
   const setWheelAngle = useCallback((ang: number) => {
     if (wheelRef.current) {
-      const deg = (ang * 180) / Math.PI;
-      wheelRef.current.setAttribute("transform", `rotate(${deg.toFixed(3)}, ${cx}, ${cy})`);
+      wheelRef.current.style.transform = `rotate(${(ang * 180 / Math.PI).toFixed(3)}deg)`;
     }
-  }, [cx, cy]);
+  }, []);
 
   useEffect(() => { setWheelAngle(angleRef.current); }, [setWheelAngle, size]);
 
@@ -223,15 +233,13 @@ function SpinWheel({ spinning, winTier, onSpinEnd, onTick, size }: {
     const startTime   = performance.now();
     function ease(t: number) { return 1 - Math.pow(1 - t, 4); }
     function frame(now: number) {
-      const t      = Math.min((now - startTime) / duration, 1);
-      const ang    = startAng + (finalAngle - startAng) * ease(t);
-      const rel    = ((-ang - Math.PI / 2) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
-      const seg    = Math.floor(rel / slice) % SEGMENTS.length;
+      const t   = Math.min((now - startTime) / duration, 1);
+      const ang = startAng + (finalAngle - startAng) * ease(t);
+      const rel = ((-ang - Math.PI / 2) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+      const seg = Math.floor(rel / slice) % SEGMENTS.length;
       if (seg !== lastSegRef.current) {
         lastSegRef.current = seg;
         onTick(1 - ease(t));
-        setHotSeg(seg);
-        setTimeout(() => setHotSeg(-1), 100);
       }
       angleRef.current = ang;
       setWheelAngle(ang);
@@ -242,109 +250,51 @@ function SpinWheel({ spinning, winTier, onSpinEnd, onTick, size }: {
     return () => cancelAnimationFrame(rafRef.current);
   }, [spinning, winTier, slice, onTick, onSpinEnd, setWheelAngle]);
 
-  const segArc = (i: number) => {
-    const sa = i * slice, ea = (i + 1) * slice;
-    const sx = cx + r * Math.cos(sa), sy = cy + r * Math.sin(sa);
-    const ex = cx + r * Math.cos(ea), ey = cy + r * Math.sin(ea);
-    return `M ${cx} ${cy} L ${sx.toFixed(2)} ${sy.toFixed(2)} A ${r} ${r} 0 0 1 ${ex.toFixed(2)} ${ey.toFixed(2)} Z`;
-  };
-
-  const mintArc = (i: number, hr: number) => {
-    const sa = (i / 6) * 2 * Math.PI, ea = sa + Math.PI / 6;
-    const sx = cx + hr * Math.cos(sa), sy = cy + hr * Math.sin(sa);
-    const ex = cx + hr * Math.cos(ea), ey = cy + hr * Math.sin(ea);
-    return `M ${cx} ${cy} L ${sx.toFixed(2)} ${sy.toFixed(2)} A ${hr} ${hr} 0 0 1 ${ex.toFixed(2)} ${ey.toFixed(2)} Z`;
-  };
-
   return (
-    <div style={{ flexShrink: 0 }}>
-      <svg width={svgSize} height={svgSize} style={{ display: "block", overflow: "visible" }}>
+    <div style={{ position: "relative", width: padded, height: padded, flexShrink: 0 }}>
+      {/* Spinning wheel image */}
+      <div
+        ref={wheelRef}
+        style={{
+          position: "absolute",
+          top: 24, left: 24,
+          width: size, height: size,
+          borderRadius: "50%",
+          overflow: "hidden",
+          transformOrigin: "center center",
+          boxShadow: "0 0 32px #FF478566, 0 0 64px #FF478522",
+        }}
+      >
+        <img
+          src={WHEEL_IMG}
+          alt="SpinMint wheel"
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+          crossOrigin="anonymous"
+        />
+      </div>
+
+      {/* Fixed pointer + outer glow overlay */}
+      <svg
+        width={padded} height={padded}
+        style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none" }}
+      >
         <defs>
-          {SEGMENTS.map((seg, i) => (
-            <radialGradient key={i} id={`sg-${i}`} cx={cx} cy={cy} r={r} gradientUnits="userSpaceOnUse">
-              <stop offset="0%"   stopColor="#ffffff" stopOpacity="0.9" />
-              <stop offset="28%"  stopColor={seg.color} />
-              <stop offset="100%" stopColor={seg.dark ?? seg.color} />
-            </radialGradient>
-          ))}
-          <radialGradient id="pearl-g" cx="35%" cy="30%" r="65%">
-            <stop offset="0%" stopColor="#fff" />
-            <stop offset="100%" stopColor="#ffaacc" />
-          </radialGradient>
-          <filter id="wglow" x="-25%" y="-25%" width="150%" height="150%">
-            <feGaussianBlur stdDeviation="5" result="b"/>
-            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-          </filter>
-          <filter id="ptrglow" x="-40%" y="-40%" width="180%" height="180%">
+          <filter id="ptrglow" x="-50%" y="-50%" width="200%" height="200%">
             <feGaussianBlur stdDeviation="4" result="b"/>
             <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
           </filter>
         </defs>
-
-        {/* Outer candy glow */}
-        <circle cx={cx} cy={cy} r={r + 22} fill="none" stroke="#FF478533" strokeWidth="20" />
-        {/* Pink border ring */}
-        <circle cx={cx} cy={cy} r={r + 8}  fill="none" stroke="#FF4785"   strokeWidth="10" />
-        {/* Inner white edge */}
-        <circle cx={cx} cy={cy} r={r + 2}  fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="2" />
-
-        {/* Rotating wheel */}
-        <g ref={wheelRef}>
-          {SEGMENTS.map((seg, i) => {
-            const isHot   = i === hotSeg;
-            const midAng  = i * slice + slice / 2;
-            const labelR  = r * 0.63;
-            const lx      = cx + labelR * Math.cos(midAng);
-            const ly      = cy + labelR * Math.sin(midAng);
-            const lDeg    = midAng * 180 / Math.PI + 90;
-            const fSize   = r > 120 ? 12 : 10;
-            return (
-              <g key={i}>
-                <path d={segArc(i)}
-                  fill={`url(#sg-${i})`}
-                  stroke="rgba(255,255,255,0.6)" strokeWidth="1.5"
-                  filter={isHot ? "url(#wglow)" : undefined} />
-                <text x={lx.toFixed(1)} y={ly.toFixed(1)}
-                  textAnchor="middle" dominantBaseline="middle"
-                  transform={`rotate(${lDeg.toFixed(1)}, ${lx.toFixed(1)}, ${ly.toFixed(1)})`}
-                  fontSize={isHot ? fSize + 2 : fSize}
-                  fontWeight="bold" fontFamily="'Space Mono', monospace"
-                  fill="white" stroke="rgba(0,0,0,0.75)" strokeWidth="3" paintOrder="stroke"
-                  style={{ userSelect: "none" }}>
-                  {seg.label}
-                </text>
-              </g>
-            );
-          })}
-        </g>
-
-        {/* Pearl dots (fixed) */}
-        {Array.from({ length: 30 }, (_, i) => {
-          const a  = (i / 30) * 2 * Math.PI - Math.PI / 2;
-          const px = cx + (r + 18) * Math.cos(a);
-          const py = cy + (r + 18) * Math.sin(a);
-          return <circle key={i} cx={px.toFixed(1)} cy={py.toFixed(1)} r="5.5"
-            fill={i % 2 === 0 ? "url(#pearl-g)" : "#ff6699"}
-            stroke="#cc2255" strokeWidth="0.8" />;
-        })}
-
-        {/* Peppermint hub (fixed) */}
-        {Array.from({ length: 6 }, (_, i) => (
-          <path key={i} d={mintArc(i, 24)}
-            fill={i % 2 === 0 ? "#FF1744" : "#ffffff"} />
-        ))}
-        <circle cx={cx} cy={cy} r="24" fill="none" stroke="#CC0022" strokeWidth="2.5" />
-        <ellipse cx={cx - 7} cy={cy - 8} rx="8" ry="5"
-          fill="rgba(255,255,255,0.32)"
-          transform={`rotate(-30, ${cx - 7}, ${cy - 8})`} />
-
-        {/* Candy pointer (fixed) */}
+        {/* Candy pointer */}
         <polygon
-          points={`${cx},${cy - r - 5} ${cx - 13},${cy - r + 26} ${cx + 13},${cy - r + 26}`}
+          points={`${cx},${cy - r - 4} ${cx - 13},${cy - r + 26} ${cx + 13},${cy - r + 26}`}
           fill="#FF1744" stroke="white" strokeWidth="2.5"
-          filter="url(#ptrglow)" />
-        <line x1={cx - 3} y1={cy - r - 2} x2={cx - 7} y2={cy - r + 18}
-          stroke="rgba(255,255,255,0.55)" strokeWidth="2.5" strokeLinecap="round" />
+          filter="url(#ptrglow)"
+        />
+        <line
+          x1={cx - 3} y1={cy - r - 1}
+          x2={cx - 7} y2={cy - r + 18}
+          stroke="rgba(255,255,255,0.6)" strokeWidth="2.5" strokeLinecap="round"
+        />
       </svg>
     </div>
   );
