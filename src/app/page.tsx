@@ -755,26 +755,32 @@ function StakingPanel({ onClose, userAddress, tonConnectUI }: {
         setLoading(false); return;
       }
 
-      // Step 2 — balance (non-fatal) — standard FunC: get_wallet_data() → (balance, ...)
+      // Step 2 — balance (non-fatal)
+      await new Promise(r => setTimeout(r, 800));
       try {
         const walData = await tonClient.runMethod(jw, "get_wallet_data", []);
         setSMBalance(Number(walData.stack.readBigNumber()) / 1e9);
       } catch { setSMBalance(0); }
 
-      // Step 3 — staking contract getters (sequential to avoid TonCenter rate limit)
+      // Step 3 — staking contract (sequential, 800ms gaps for TonCenter free tier)
       const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
       try {
-        const aRes = await tonClient.runMethod(Address.parse(STAKING_CONTRACT), "stakedAmount",   addrCell);
-        await wait(350);
-        const tRes = await tonClient.runMethod(Address.parse(STAKING_CONTRACT), "stakedTier",     addrCell);
-        await wait(350);
-        const rRes = await tonClient.runMethod(Address.parse(STAKING_CONTRACT), "pendingRewards", addrCell);
-        await wait(350);
-        const uRes = await tonClient.runMethod(Address.parse(STAKING_CONTRACT), "unlockTime",     addrCell);
-        setStakedAmt(Number(aRes.stack.readBigNumber()) / 1e9);
-        setStakeTier(tRes.stack.readNumber());
-        setBaseRewards(Number(rRes.stack.readBigNumber()) / 1e9);
-        setUnlockAt(uRes.stack.readNumber());
+        await wait(800);
+        const aRes = await tonClient.runMethod(Address.parse(STAKING_CONTRACT), "stakedAmount", addrCell);
+        const amt  = Number(aRes.stack.readBigNumber()) / 1e9;
+        setStakedAmt(amt);
+
+        if (amt > 0) {
+          await wait(800);
+          const tRes = await tonClient.runMethod(Address.parse(STAKING_CONTRACT), "stakedTier",     addrCell);
+          await wait(800);
+          const rRes = await tonClient.runMethod(Address.parse(STAKING_CONTRACT), "pendingRewards", addrCell);
+          await wait(800);
+          const uRes = await tonClient.runMethod(Address.parse(STAKING_CONTRACT), "unlockTime",     addrCell);
+          setStakeTier(tRes.stack.readNumber());
+          setBaseRewards(Number(rRes.stack.readBigNumber()) / 1e9);
+          setUnlockAt(uRes.stack.readNumber());
+        }
         setFetchTime(Date.now());
       } catch (e: unknown) {
         setErr("Staking contract: " + String(e).slice(0, 60));
