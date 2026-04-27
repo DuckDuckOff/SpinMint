@@ -1026,15 +1026,10 @@ function PrizeTiersPanel({ onClose }: { onClose: () => void }) {
               <p style={{ fontFamily: "'Bebas Neue'", fontSize: 16, color: t.color, letterSpacing: 2, lineHeight: 1 }}>{t.label}</p>
               <p style={{ fontSize: 9, color: "#ffffff55", letterSpacing: 1 }}>{t.prize}</p>
             </div>
-            <div style={{
-              background: `${t.color}22`, border: `1px solid ${t.color}55`,
-              borderRadius: 8, padding: "3px 8px",
-              fontFamily: "'Space Mono',monospace", fontSize: 9, color: t.color, whiteSpace: "nowrap",
-            }}>{t.odds}</div>
           </div>
         ))}
         <p style={{ fontSize: 8, color: "#ffffff22", textAlign: "center", marginTop: 10, letterSpacing: 1 }}>
-          1 TON PER SPIN  •  ODDS OUT OF 10,000
+          1 TON PER SPIN
         </p>
       </div>
     </div>
@@ -1391,7 +1386,6 @@ export default function SpinMintApp() {
               fontFamily: "'Space Mono',monospace", fontSize: 8,
               color: "#FFD700", letterSpacing: 2,
             }}>PRIZES ↑</button>
-            <p style={{ fontFamily: "'Bebas Neue'", fontSize: 14, color: "#FFD700", letterSpacing: 2, marginTop: 3 }}>0.05% JACKPOT</p>
           </div>
         </div>
 
