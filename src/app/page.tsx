@@ -747,7 +747,7 @@ function StakingPanel({ onClose, userAddress, tonConnectUI }: {
       // Step 1 — resolve user's jetton wallet
       let jw: import("@ton/ton").Address;
       try {
-        const jwRes = await tonClient.runMethod(Address.parse(JETTON_MASTER), "walletAddress", addrCell);
+        const jwRes = await tonClient.runMethod(Address.parse(JETTON_MASTER), "get_wallet_address", addrCell);
         jw = jwRes.stack.readAddress();
         setJwAddr(jw.toString());
       } catch (e: unknown) {
@@ -755,10 +755,10 @@ function StakingPanel({ onClose, userAddress, tonConnectUI }: {
         setLoading(false); return;
       }
 
-      // Step 2 — balance (non-fatal)
+      // Step 2 — balance (non-fatal) — standard FunC: get_wallet_data() → (balance, ...)
       try {
-        const balRes = await tonClient.runMethod(jw, "balance", []);
-        setSMBalance(Number(balRes.stack.readBigNumber()) / 1e9);
+        const walData = await tonClient.runMethod(jw, "get_wallet_data", []);
+        setSMBalance(Number(walData.stack.readBigNumber()) / 1e9);
       } catch { setSMBalance(0); }
 
       // Step 3 — staking contract getters
