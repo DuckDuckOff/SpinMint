@@ -14,7 +14,26 @@ const SPIN_PAYLOAD      = beginCell().storeUint(0x7370696e, 32).endCell().toBoc(
 const CLAIM_PAYLOAD     = beginCell().storeUint(0x636c6169, 32).endCell().toBoc().toString("base64");
 const FREE_SPIN_PAYLOAD = beginCell().storeUint(0x66726565, 32).endCell().toBoc().toString("base64");
 const JETTON_MASTER     = process.env.NEXT_PUBLIC_JETTON_MASTER ?? "";
+const STAKING_CONTRACT  = process.env.NEXT_PUBLIC_STAKING_CONTRACT ?? "";
 
+// CRC32 for Tact auto-generated message opcodes
+function crc32str(str: string): number {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < str.length; i++) {
+    c ^= str.charCodeAt(i);
+    for (let j = 0; j < 8; j++) c = (c >>> 1) ^ (c & 1 ? 0xEDB88320 : 0);
+  }
+  return ((c ^ 0xFFFFFFFF) | 0x80000000) >>> 0;
+}
+const CLAIM_OPCODE   = crc32str("ClaimRewards");
+const UNSTAKE_OPCODE = crc32str("Unstake");
+
+const APY_TIERS = [
+  { pct: "12%", bps: 1200, lock: 0,        lockLabel: "No lock"  },
+  { pct: "24%", bps: 2400, lock: 2592000,  lockLabel: "30 days"  },
+  { pct: "48%", bps: 4800, lock: 7776000,  lockLabel: "90 days"  },
+  { pct: "96%", bps: 9600, lock: 15552000, lockLabel: "180 days" },
+];
 
 // ─── Prize config ─────────────────────────────────────────────────────────────
 const PRIZES = [
@@ -694,6 +713,261 @@ function CollectiblePanel({
   );
 }
 
+// ─── Staking Panel ───────────────────────────────────────────────────────────
+function StakingPanel({ onClose, userAddress, tonConnectUI }: {
+  onClose: () => void;
+  userAddress: string;
+  tonConnectUI: ReturnType<typeof useTonConnectUI>[0];
+}) {
+  const [smBalance,    setSMBalance]    = useState(0);
+  const [stakedAmt,    setStakedAmt]    = useState(0);
+  const [stakeTier,    setStakeTier]    = useState(0);
+  const [baseRewards,  setBaseRewards]  = useState(0);
+  const [fetchTime,    setFetchTime]    = useState(Date.now());
+  const [unlockAt,     setUnlockAt]     = useState(0);
+  const [liveRewards,  setLiveRewards]  = useState(0);
+  const [jwAddr,       setJwAddr]       = useState<string | null>(null);
+  const [selTier,      setSelTier]      = useState(0);
+  const [stakeInput,   setStakeInput]   = useState("");
+  const [loading,      setLoading]      = useState(true);
+  const [txBusy,       setTxBusy]       = useState(false);
+  const [err,          setErr]          = useState<string | null>(null);
+
+  const isStaking = stakedAmt > 0;
+
+  useEffect(() => { loadAll(); }, []);
+
+  async function loadAll() {
+    setLoading(true); setErr(null);
+    try {
+      const addrCell = [{ type: "slice" as const, cell: beginCell().storeAddress(Address.parse(userAddress)).endCell() }];
+      const jwRes = await tonClient.runMethod(Address.parse(JETTON_MASTER), "walletAddress", addrCell);
+      const jw    = jwRes.stack.readAddress();
+      setJwAddr(jw.toString());
+      try {
+        const bal = await tonClient.runMethod(jw, "balance", []);
+        setSMBalance(Number(bal.stack.readBigNumber()) / 1e9);
+      } catch { setSMBalance(0); }
+      const [aRes, tRes, rRes, uRes] = await Promise.all([
+        tonClient.runMethod(Address.parse(STAKING_CONTRACT), "stakedAmount",  addrCell),
+        tonClient.runMethod(Address.parse(STAKING_CONTRACT), "stakedTier",    addrCell),
+        tonClient.runMethod(Address.parse(STAKING_CONTRACT), "pendingRewards",addrCell),
+        tonClient.runMethod(Address.parse(STAKING_CONTRACT), "unlockTime",    addrCell),
+      ]);
+      setStakedAmt(Number(aRes.stack.readBigNumber()) / 1e9);
+      setStakeTier(tRes.stack.readNumber());
+      setBaseRewards(Number(rRes.stack.readBigNumber()) / 1e9);
+      setUnlockAt(uRes.stack.readNumber());
+      setFetchTime(Date.now());
+    } catch { setErr("Couldn't load staking data — try again"); }
+    finally { setLoading(false); }
+  }
+
+  // Live reward ticker
+  useEffect(() => {
+    if (stakedAmt === 0) { setLiveRewards(baseRewards); return; }
+    const bps = APY_TIERS[stakeTier].bps;
+    const tick = () => setLiveRewards(baseRewards + stakedAmt * bps * ((Date.now() - fetchTime) / 1000) / 10000 / 31536000);
+    tick();
+    const id = setInterval(tick, 100);
+    return () => clearInterval(id);
+  }, [stakedAmt, stakeTier, baseRewards, fetchTime]);
+
+  async function handleStake() {
+    if (!jwAddr || !stakeInput) return;
+    const amt = parseFloat(stakeInput);
+    if (isNaN(amt) || amt <= 0 || amt > smBalance) { setErr("Invalid amount"); return; }
+    setTxBusy(true); setErr(null);
+    try {
+      const body = beginCell()
+        .storeUint(0x0f8a7ea5, 32).storeUint(0, 64)
+        .storeCoins(BigInt(Math.floor(amt * 1e9)))
+        .storeAddress(Address.parse(STAKING_CONTRACT))
+        .storeAddress(Address.parse(userAddress))
+        .storeBit(false).storeCoins(toNano("0.05"))
+        .storeBit(false).storeUint(selTier, 8)
+        .endCell();
+      await tonConnectUI.sendTransaction({
+        validUntil: Math.floor(Date.now() / 1000) + 60,
+        messages: [{ address: jwAddr, amount: toNano("0.2").toString(), payload: body.toBoc().toString("base64") }],
+      });
+      setTimeout(loadAll, 5000);
+    } catch (e: unknown) { setErr(e instanceof Error ? e.message.slice(0, 80) : "Failed"); }
+    finally { setTxBusy(false); }
+  }
+
+  async function handleClaim() {
+    setTxBusy(true); setErr(null);
+    try {
+      const body = beginCell().storeUint(CLAIM_OPCODE, 32).storeUint(0, 64).endCell();
+      await tonConnectUI.sendTransaction({
+        validUntil: Math.floor(Date.now() / 1000) + 60,
+        messages: [{ address: STAKING_CONTRACT, amount: toNano("0.15").toString(), payload: body.toBoc().toString("base64") }],
+      });
+      setTimeout(loadAll, 5000);
+    } catch (e: unknown) { setErr(e instanceof Error ? e.message.slice(0, 80) : "Claim failed"); }
+    finally { setTxBusy(false); }
+  }
+
+  async function handleUnstake() {
+    setTxBusy(true); setErr(null);
+    try {
+      const body = beginCell().storeUint(UNSTAKE_OPCODE, 32).storeUint(0, 64).endCell();
+      await tonConnectUI.sendTransaction({
+        validUntil: Math.floor(Date.now() / 1000) + 60,
+        messages: [{ address: STAKING_CONTRACT, amount: toNano("0.15").toString(), payload: body.toBoc().toString("base64") }],
+      });
+      setTimeout(loadAll, 5000);
+    } catch (e: unknown) { setErr(e instanceof Error ? e.message.slice(0, 80) : "Unstake failed"); }
+    finally { setTxBusy(false); }
+  }
+
+  const lockedSec    = Math.max(0, unlockAt - Math.floor(Date.now() / 1000));
+  const lockedDays   = Math.ceil(lockedSec / 86400);
+  const canUnstake   = lockedSec === 0;
+  const purple       = "#CC44FF";
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}
+      onClick={onClose}>
+      <div style={{ position: "absolute", inset: 0, background: "#00000088", backdropFilter: "blur(4px)" }} />
+      <div onClick={e => e.stopPropagation()} style={{
+        position: "relative", zIndex: 1,
+        background: "linear-gradient(170deg,#0f0f1e,#0a0a14)",
+        border: `1px solid ${purple}44`, borderRadius: "20px 20px 0 0",
+        padding: "16px 16px 36px", maxHeight: "88vh", overflowY: "auto",
+      }}>
+        <div style={{ width: 40, height: 4, borderRadius: 2, background: "#ffffff33", margin: "0 auto 14px" }} />
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div>
+            <h2 style={{ fontFamily: "'Bebas Neue'", fontSize: 28, letterSpacing: 3, color: purple, lineHeight: 1 }}>$SM STAKING</h2>
+            <p style={{ fontSize: 8, color: "#ffffff44", letterSpacing: 2 }}>EARN REWARDS ON YOUR SPINMINT</p>
+          </div>
+          <button onClick={onClose} style={{ background: "#ffffff11", border: "1px solid #ffffff22", borderRadius: 8, padding: "4px 10px", color: "#fff", cursor: "pointer", fontSize: 16 }}>✕</button>
+        </div>
+
+        {loading ? (
+          <p style={{ color: "#ffffff44", textAlign: "center", padding: 24, fontFamily: "'Space Mono',monospace", fontSize: 11 }}>Loading...</p>
+        ) : (
+          <>
+            {/* Balance */}
+            <div style={{ background: `${purple}11`, border: `1px solid ${purple}33`, borderRadius: 12, padding: "10px 14px", marginBottom: 12 }}>
+              <p style={{ fontSize: 8, color: `${purple}99`, letterSpacing: 2 }}>YOUR $SM BALANCE</p>
+              <p style={{ fontFamily: "'Bebas Neue'", fontSize: 30, color: purple, lineHeight: 1, textShadow: `0 0 20px ${purple}66` }}>
+                {smBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })} <span style={{ fontSize: 16 }}>$SM</span>
+              </p>
+            </div>
+
+            {isStaking ? (
+              <>
+                <div style={{ background: "#ffffff07", border: "1px solid #ffffff11", borderRadius: 12, padding: "10px 14px", marginBottom: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <p style={{ fontSize: 8, color: "#ffffff44", letterSpacing: 2 }}>STAKED</p>
+                      <p style={{ fontFamily: "'Bebas Neue'", fontSize: 24, color: "#fff", lineHeight: 1 }}>
+                        {stakedAmt.toLocaleString(undefined, { maximumFractionDigits: 2 })} $SM
+                      </p>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <p style={{ fontSize: 8, color: "#ffffff44", letterSpacing: 2 }}>APY TIER</p>
+                      <p style={{ fontFamily: "'Bebas Neue'", fontSize: 24, color: purple, lineHeight: 1 }}>{APY_TIERS[stakeTier].pct}</p>
+                    </div>
+                  </div>
+                  {lockedSec > 0 && (
+                    <p style={{ fontSize: 8, color: "#FF7A0099", letterSpacing: 1, marginTop: 6 }}>
+                      🔒 Locked — {lockedDays} day{lockedDays !== 1 ? "s" : ""} remaining
+                    </p>
+                  )}
+                </div>
+
+                {/* Live ticking rewards */}
+                <div style={{
+                  background: "linear-gradient(135deg,#1a0030,#0a0a1e)",
+                  border: `1px solid ${purple}55`, borderRadius: 14,
+                  padding: "16px 14px", marginBottom: 14, textAlign: "center",
+                }}>
+                  <p style={{ fontSize: 8, color: `${purple}88`, letterSpacing: 3, marginBottom: 6 }}>PENDING REWARDS</p>
+                  <p style={{ fontFamily: "'Bebas Neue'", fontSize: 40, lineHeight: 1, color: purple,
+                    textShadow: `0 0 24px ${purple}, 0 0 48px ${purple}66` }}>
+                    {liveRewards.toFixed(6)}
+                  </p>
+                  <p style={{ fontSize: 10, color: `${purple}66`, letterSpacing: 2, marginTop: 4 }}>$SM</p>
+                </div>
+
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={handleClaim} disabled={txBusy || liveRewards < 0.0000001} style={{
+                    flex: 1, padding: "13px", borderRadius: 10,
+                    background: txBusy ? "#333" : purple, border: "none",
+                    color: "#000", fontFamily: "'Bebas Neue'", fontSize: 18, letterSpacing: 2,
+                    cursor: txBusy ? "not-allowed" : "pointer", opacity: txBusy ? 0.6 : 1,
+                  }}>{txBusy ? "..." : "CLAIM"}</button>
+                  <button onClick={handleUnstake} disabled={txBusy || !canUnstake} style={{
+                    flex: 1, padding: "13px", borderRadius: 10, background: "transparent",
+                    border: `1px solid ${canUnstake ? `${purple}66` : "#ffffff22"}`,
+                    color: canUnstake ? `${purple}cc` : "#ffffff33",
+                    fontFamily: "'Bebas Neue'", fontSize: 18, letterSpacing: 2,
+                    cursor: (txBusy || !canUnstake) ? "not-allowed" : "pointer",
+                  }}>{canUnstake ? "UNSTAKE" : "LOCKED"}</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p style={{ fontSize: 8, color: "#ffffff44", letterSpacing: 2, marginBottom: 8 }}>CHOOSE APY TIER</p>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+                  {APY_TIERS.map((t, i) => (
+                    <button key={i} onClick={() => setSelTier(i)} style={{
+                      padding: "10px 8px", borderRadius: 10, cursor: "pointer",
+                      background: selTier === i ? `${purple}22` : "#ffffff07",
+                      border: `1px solid ${selTier === i ? purple : "#ffffff18"}`,
+                    }}>
+                      <p style={{ fontFamily: "'Bebas Neue'", fontSize: 24, color: selTier === i ? purple : "#fff", lineHeight: 1 }}>{t.pct}</p>
+                      <p style={{ fontSize: 8, color: "#ffffff55", letterSpacing: 1 }}>{t.lockLabel}</p>
+                    </button>
+                  ))}
+                </div>
+
+                <p style={{ fontSize: 8, color: "#ffffff44", letterSpacing: 2, marginBottom: 6 }}>AMOUNT TO STAKE</p>
+                <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+                  <input type="number" value={stakeInput} onChange={e => setStakeInput(e.target.value)}
+                    placeholder="0.00" style={{
+                      flex: 1, padding: "11px 12px", borderRadius: 10,
+                      background: "#ffffff08", border: "1px solid #ffffff22",
+                      color: "#fff", fontSize: 16, fontFamily: "'Space Mono',monospace", outline: "none",
+                    }} />
+                  <button onClick={() => setStakeInput(smBalance.toFixed(2))} style={{
+                    padding: "11px 14px", borderRadius: 10,
+                    background: `${purple}22`, border: `1px solid ${purple}55`,
+                    color: purple, fontFamily: "'Space Mono',monospace",
+                    fontSize: 10, letterSpacing: 1, cursor: "pointer",
+                  }}>MAX</button>
+                </div>
+
+                {smBalance === 0 && (
+                  <p style={{ fontSize: 9, color: "#ffffff33", textAlign: "center", marginBottom: 10, letterSpacing: 1 }}>
+                    Spin first to earn $SM — then stake it here
+                  </p>
+                )}
+
+                <button onClick={handleStake} disabled={txBusy || !stakeInput || smBalance === 0} style={{
+                  width: "100%", padding: "14px", borderRadius: 12,
+                  background: (txBusy || !stakeInput || smBalance === 0) ? "#333" : purple,
+                  border: "none", color: "#000",
+                  fontFamily: "'Bebas Neue'", fontSize: 20, letterSpacing: 3,
+                  cursor: (txBusy || !stakeInput || smBalance === 0) ? "not-allowed" : "pointer",
+                  opacity: (txBusy || !stakeInput || smBalance === 0) ? 0.5 : 1,
+                }}>{txBusy ? "SENDING..." : "STAKE"}</button>
+              </>
+            )}
+
+            {err && <p style={{ marginTop: 10, fontSize: 9, color: "#ff6b6b", textAlign: "center" }}>{err}</p>}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Prize Tiers Panel ───────────────────────────────────────────────────────
 function PrizeTiersPanel({ onClose }: { onClose: () => void }) {
   const TIERS = [
@@ -804,6 +1078,7 @@ export default function SpinMintApp() {
   const [showCollectible, setShowCollectible] = useState(false);
   const [showWithdraw, setShowWithdraw]       = useState(false);
   const [showPrizeTiers, setShowPrizeTiers]   = useState(false);
+  const [showStaking, setShowStaking]         = useState(false);
   const [freeSpins, setFreeSpins]             = useState<bigint>(0n);
 
   // TON contract state
@@ -1230,19 +1505,30 @@ export default function SpinMintApp() {
                 </button>
               )}
 
-              <button onClick={() => {
-                bootAudio();
-                const text = encodeURIComponent("🎰 Spinning on SpinMint — 1 TON to win the jackpot on Telegram!");
-                const url = encodeURIComponent(process.env.NEXT_PUBLIC_APP_URL ?? window.location.href);
-                window.open(`https://t.me/share/url?url=${url}&text=${text}`, "_blank");
-              }} style={{
-                width: "100%", padding: "8px", borderRadius: 10,
-                background: "transparent", border: "1px solid #ffffff18",
-                color: "#ffffff55", fontSize: 9, letterSpacing: 3,
-                fontFamily: "'Space Mono',monospace", cursor: "pointer",
-              }}>
-                SHARE & EARN FREE SPIN
-              </button>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={() => {
+                  bootAudio();
+                  const text = encodeURIComponent("🎰 Spinning on SpinMint — 1 TON to win the jackpot on Telegram!");
+                  const url = encodeURIComponent(process.env.NEXT_PUBLIC_APP_URL ?? window.location.href);
+                  window.open(`https://t.me/share/url?url=${url}&text=${text}`, "_blank");
+                }} style={{
+                  flex: 1, padding: "8px", borderRadius: 10,
+                  background: "transparent", border: "1px solid #ffffff18",
+                  color: "#ffffff55", fontSize: 9, letterSpacing: 2,
+                  fontFamily: "'Space Mono',monospace", cursor: "pointer",
+                }}>
+                  SHARE & EARN FREE SPIN
+                </button>
+                <button onClick={() => { bootAudio(); setShowStaking(true); }} style={{
+                  padding: "8px 12px", borderRadius: 10,
+                  background: "#CC44FF22", border: "1px solid #CC44FF55",
+                  color: "#CC44FF", fontSize: 9, letterSpacing: 2,
+                  fontFamily: "'Space Mono',monospace", cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}>
+                  STAKE $SM
+                </button>
+              </div>
             </>
           )}
         </div>
@@ -1293,6 +1579,14 @@ export default function SpinMintApp() {
             $2 USDC
           </div>
         </div>
+      )}
+
+      {showStaking && isConnected && (
+        <StakingPanel
+          onClose={() => setShowStaking(false)}
+          userAddress={address}
+          tonConnectUI={tonConnectUI}
+        />
       )}
 
       {showPrizeTiers && <PrizeTiersPanel onClose={() => setShowPrizeTiers(false)} />}
