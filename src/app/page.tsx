@@ -741,12 +741,13 @@ function StakingPanel({ onClose, userAddress, tonConnectUI }: {
     setLoading(true); setErr(null);
     try {
       const addrCell = [{ type: "slice" as const, cell: beginCell().storeAddress(Address.parse(userAddress)).endCell() }];
-      const jwRes = await tonClient.runMethod(Address.parse(JETTON_MASTER), "walletAddress", addrCell);
+      const jwRes = await tonClient.runMethod(Address.parse(JETTON_MASTER), "get_wallet_address", addrCell);
       const jw    = jwRes.stack.readAddress();
       setJwAddr(jw.toString());
       try {
-        const bal = await tonClient.runMethod(jw, "balance", []);
-        setSMBalance(Number(bal.stack.readBigNumber()) / 1e9);
+        // Standard FunC jetton wallet: get_wallet_data() → (balance, owner, master, code)
+        const walData = await tonClient.runMethod(jw, "get_wallet_data", []);
+        setSMBalance(Number(walData.stack.readBigNumber()) / 1e9);
       } catch { setSMBalance(0); }
       const [aRes, tRes, rRes, uRes] = await Promise.all([
         tonClient.runMethod(Address.parse(STAKING_CONTRACT), "stakedAmount",  addrCell),
