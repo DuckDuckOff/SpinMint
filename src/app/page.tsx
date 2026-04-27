@@ -761,14 +761,16 @@ function StakingPanel({ onClose, userAddress, tonConnectUI }: {
         setSMBalance(Number(walData.stack.readBigNumber()) / 1e9);
       } catch { setSMBalance(0); }
 
-      // Step 3 — staking contract getters
+      // Step 3 — staking contract getters (sequential to avoid TonCenter rate limit)
+      const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
       try {
-        const [aRes, tRes, rRes, uRes] = await Promise.all([
-          tonClient.runMethod(Address.parse(STAKING_CONTRACT), "stakedAmount",   addrCell),
-          tonClient.runMethod(Address.parse(STAKING_CONTRACT), "stakedTier",     addrCell),
-          tonClient.runMethod(Address.parse(STAKING_CONTRACT), "pendingRewards", addrCell),
-          tonClient.runMethod(Address.parse(STAKING_CONTRACT), "unlockTime",     addrCell),
-        ]);
+        const aRes = await tonClient.runMethod(Address.parse(STAKING_CONTRACT), "stakedAmount",   addrCell);
+        await wait(350);
+        const tRes = await tonClient.runMethod(Address.parse(STAKING_CONTRACT), "stakedTier",     addrCell);
+        await wait(350);
+        const rRes = await tonClient.runMethod(Address.parse(STAKING_CONTRACT), "pendingRewards", addrCell);
+        await wait(350);
+        const uRes = await tonClient.runMethod(Address.parse(STAKING_CONTRACT), "unlockTime",     addrCell);
         setStakedAmt(Number(aRes.stack.readBigNumber()) / 1e9);
         setStakeTier(tRes.stack.readNumber());
         setBaseRewards(Number(rRes.stack.readBigNumber()) / 1e9);
