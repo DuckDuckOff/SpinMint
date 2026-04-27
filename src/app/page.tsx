@@ -739,28 +739,49 @@ function StakingPanel({ onClose, userAddress, tonConnectUI }: {
 
   async function loadAll() {
     setLoading(true); setErr(null);
+    if (!JETTON_MASTER)    { setErr("JETTON_MASTER not set"); setLoading(false); return; }
+    if (!STAKING_CONTRACT) { setErr("STAKING_CONTRACT not set"); setLoading(false); return; }
     try {
       const addrCell = [{ type: "slice" as const, cell: beginCell().storeAddress(Address.parse(userAddress)).endCell() }];
-      const jwRes = await tonClient.runMethod(Address.parse(JETTON_MASTER), "walletAddress", addrCell);
-      const jw    = jwRes.stack.readAddress();
-      setJwAddr(jw.toString());
+
+      // Step 1 — resolve user's jetton wallet
+      let jw: import("@ton/ton").Address;
+      try {
+        const jwRes = await tonClient.runMethod(Address.parse(JETTON_MASTER), "walletAddress", addrCell);
+        jw = jwRes.stack.readAddress();
+        setJwAddr(jw.toString());
+      } catch (e: unknown) {
+        setErr("Jetton master: " + String(e).slice(0, 60));
+        setLoading(false); return;
+      }
+
+      // Step 2 — balance (non-fatal)
       try {
         const balRes = await tonClient.runMethod(jw, "balance", []);
         setSMBalance(Number(balRes.stack.readBigNumber()) / 1e9);
       } catch { setSMBalance(0); }
-      const [aRes, tRes, rRes, uRes] = await Promise.all([
-        tonClient.runMethod(Address.parse(STAKING_CONTRACT), "stakedAmount",  addrCell),
-        tonClient.runMethod(Address.parse(STAKING_CONTRACT), "stakedTier",    addrCell),
-        tonClient.runMethod(Address.parse(STAKING_CONTRACT), "pendingRewards",addrCell),
-        tonClient.runMethod(Address.parse(STAKING_CONTRACT), "unlockTime",    addrCell),
-      ]);
-      setStakedAmt(Number(aRes.stack.readBigNumber()) / 1e9);
-      setStakeTier(tRes.stack.readNumber());
-      setBaseRewards(Number(rRes.stack.readBigNumber()) / 1e9);
-      setUnlockAt(uRes.stack.readNumber());
-      setFetchTime(Date.now());
-    } catch { setErr("Couldn't load staking data — try again"); }
-    finally { setLoading(false); }
+
+      // Step 3 — staking contract getters
+      try {
+        const [aRes, tRes, rRes, uRes] = await Promise.all([
+          tonClient.runMethod(Address.parse(STAKING_CONTRACT), "stakedAmount",   addrCell),
+          tonClient.runMethod(Address.parse(STAKING_CONTRACT), "stakedTier",     addrCell),
+          tonClient.runMethod(Address.parse(STAKING_CONTRACT), "pendingRewards", addrCell),
+          tonClient.runMethod(Address.parse(STAKING_CONTRACT), "unlockTime",     addrCell),
+        ]);
+        setStakedAmt(Number(aRes.stack.readBigNumber()) / 1e9);
+        setStakeTier(tRes.stack.readNumber());
+        setBaseRewards(Number(rRes.stack.readBigNumber()) / 1e9);
+        setUnlockAt(uRes.stack.readNumber());
+        setFetchTime(Date.now());
+      } catch (e: unknown) {
+        setErr("Staking contract: " + String(e).slice(0, 60));
+        setLoading(false); return;
+      }
+
+    } catch (e: unknown) {
+      setErr("Error: " + String(e).slice(0, 60));
+    } finally { setLoading(false); }
   }
 
   // Live reward ticker
