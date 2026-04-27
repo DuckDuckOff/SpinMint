@@ -732,10 +732,17 @@ function StakingPanel({ onClose, userAddress, tonConnectUI }: {
   const [loading,      setLoading]      = useState(true);
   const [txBusy,       setTxBusy]       = useState(false);
   const [err,          setErr]          = useState<string | null>(null);
+  const [txSuccess,    setTxSuccess]    = useState<string | null>(null);
 
   const isStaking = stakedAmt > 0;
 
   useEffect(() => { loadAll(); }, []);
+
+  // Auto-refresh every 2 minutes while panel is open
+  useEffect(() => {
+    const id = setInterval(() => { loadAll(); }, 120_000);
+    return () => clearInterval(id);
+  }, []);
 
   async function loadAll() {
     setLoading(true); setErr(null);
@@ -802,6 +809,11 @@ function StakingPanel({ onClose, userAddress, tonConnectUI }: {
     return () => clearInterval(id);
   }, [stakedAmt, stakeTier, baseRewards, fetchTime]);
 
+  const showSuccess = (msg: string) => {
+    setTxSuccess(msg);
+    setTimeout(() => setTxSuccess(null), 5000);
+  };
+
   async function handleStake() {
     if (!jwAddr || !stakeInput) return;
     const amt = parseFloat(stakeInput);
@@ -820,7 +832,9 @@ function StakingPanel({ onClose, userAddress, tonConnectUI }: {
         validUntil: Math.floor(Date.now() / 1000) + 60,
         messages: [{ address: jwAddr, amount: toNano("0.2").toString(), payload: body.toBoc().toString("base64") }],
       });
-      setTimeout(loadAll, 5000);
+      setStakeInput("");
+      showSuccess(`Staked ${amt.toFixed(2)} $SM at ${APY_TIERS[selTier].pct} APY`);
+      setTimeout(loadAll, 15000);
     } catch (e: unknown) { setErr(e instanceof Error ? e.message.slice(0, 80) : "Failed"); }
     finally { setTxBusy(false); }
   }
@@ -833,7 +847,8 @@ function StakingPanel({ onClose, userAddress, tonConnectUI }: {
         validUntil: Math.floor(Date.now() / 1000) + 60,
         messages: [{ address: STAKING_CONTRACT, amount: toNano("0.15").toString(), payload: body.toBoc().toString("base64") }],
       });
-      setTimeout(loadAll, 5000);
+      showSuccess("Rewards claimed — $SM on its way");
+      setTimeout(loadAll, 15000);
     } catch (e: unknown) { setErr(e instanceof Error ? e.message.slice(0, 80) : "Claim failed"); }
     finally { setTxBusy(false); }
   }
@@ -846,7 +861,8 @@ function StakingPanel({ onClose, userAddress, tonConnectUI }: {
         validUntil: Math.floor(Date.now() / 1000) + 60,
         messages: [{ address: STAKING_CONTRACT, amount: toNano("0.15").toString(), payload: body.toBoc().toString("base64") }],
       });
-      setTimeout(loadAll, 5000);
+      showSuccess("Unstaked — tokens returning to your wallet");
+      setTimeout(loadAll, 15000);
     } catch (e: unknown) { setErr(e instanceof Error ? e.message.slice(0, 80) : "Unstake failed"); }
     finally { setTxBusy(false); }
   }
@@ -989,7 +1005,22 @@ function StakingPanel({ onClose, userAddress, tonConnectUI }: {
               </>
             )}
 
+            {txSuccess && (
+              <div style={{ marginTop: 10, padding: "10px 14px", borderRadius: 10,
+                background: "#00E67622", border: "1px solid #00E67655",
+                fontSize: 10, color: "#00E676", textAlign: "center", letterSpacing: 1 }}>
+                ✓ {txSuccess}
+              </div>
+            )}
             {err && <p style={{ marginTop: 10, fontSize: 9, color: "#ff6b6b", textAlign: "center" }}>{err}</p>}
+            <button onClick={loadAll} disabled={loading} style={{
+              marginTop: 12, width: "100%", padding: "8px", borderRadius: 8,
+              background: "transparent", border: "1px solid #ffffff11",
+              color: "#ffffff33", fontSize: 8, letterSpacing: 2,
+              fontFamily: "'Space Mono',monospace", cursor: loading ? "not-allowed" : "pointer",
+            }}>
+              {loading ? "REFRESHING..." : "↻  REFRESH BALANCE"}
+            </button>
           </>
         )}
       </div>
