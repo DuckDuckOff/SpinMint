@@ -11,6 +11,8 @@ const MINI_APP_URL  = process.env.MINI_APP_URL  ?? "https://t.me/SpinMintingbot/
 const OWNER_ID      = process.env.OWNER_TG_ID   ? Number(process.env.OWNER_TG_ID) : null;
 const REDIS_URL     = process.env.REDIS_URL;
 const BROADCAST_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
+const BANNER_URL = "https://res.cloudinary.com/dr38zeh9b/image/upload/v1775852423/big_logo_xrcgd3.jpg";
+
 
 if (!BOT_TOKEN)     throw new Error("BOT_TOKEN is required");
 if (!CONTRACT_ADDR) throw new Error("CONTRACT_ADDRESS is required");
@@ -90,7 +92,8 @@ async function broadcastToGroups(text) {
   const dead = [];
   for (const chatId of groupChats) {
     try {
-      await bot.telegram.sendMessage(chatId, text, {
+      await bot.telegram.sendPhoto(chatId, BANNER_URL, {
+        caption: text,
         parse_mode: "HTML",
         ...playButton(),
       });
@@ -133,7 +136,8 @@ async function scheduledBroadcast() {
 // ── Channel monitor ───────────────────────────────────────────────────────────
 async function postToChannel(text) {
   try {
-    await bot.telegram.sendMessage(CHANNEL_ID, text, {
+    await bot.telegram.sendPhoto(CHANNEL_ID, BANNER_URL, {
+      caption: text,
       parse_mode: "HTML",
       ...playButton(),
     });
@@ -196,30 +200,30 @@ bot.start(async (ctx) => {
   registerGroup(ctx.chat.id, ctx.chat.type);
   const jackpot = await getJackpot();
   const pool    = jackpot !== null ? fmtTon(jackpot) : "growing";
-  await ctx.reply(
-    `🎰 <b>SpinMint</b> — Telegram's onchain spin game\n\n💰 Current jackpot: <b>${pool}</b>\n🎯 1 TON per spin  •  2% jackpot odds\n\nTap below to play 👇`,
-    { parse_mode: "HTML", ...playButton() }
-  );
+  await ctx.replyWithPhoto(BANNER_URL, {
+    caption: `🎰 <b>SpinMint</b> — Telegram's onchain spin game\n\n💰 Current jackpot: <b>${pool}</b>\n🎯 1 TON per spin  •  2% jackpot odds\n\nTap below to play 👇`,
+    parse_mode: "HTML", ...playButton(),
+  });
 });
 
 bot.command("play", async (ctx) => {
   registerGroup(ctx.chat.id, ctx.chat.type);
   const jackpot = await getJackpot();
   const pool    = jackpot !== null ? fmtTon(jackpot) : "growing";
-  await ctx.reply(
-    `🎰 <b>SpinMint</b>\n\n💰 Jackpot: <b>${pool}</b>  •  1 TON to spin\n\nWin the full pool, TON prizes, or a rare NFT 🍭`,
-    { parse_mode: "HTML", ...playButton() }
-  );
+  await ctx.replyWithPhoto(BANNER_URL, {
+    caption: `🎰 <b>SpinMint</b>\n\n💰 Jackpot: <b>${pool}</b>  •  1 TON to spin\n\nWin the full pool, TON prizes, or a rare NFT 🍭`,
+    parse_mode: "HTML", ...playButton(),
+  });
 });
 
 bot.command("jackpot", async (ctx) => {
   registerGroup(ctx.chat.id, ctx.chat.type);
   const jackpot = await getJackpot();
   if (jackpot === null) { await ctx.reply("⚠️ Couldn't fetch jackpot right now."); return; }
-  await ctx.reply(
-    `💰 <b>SpinMint Jackpot: ${fmtTon(jackpot)}</b>\n\nSpin for 1 TON — winner takes all.`,
-    { parse_mode: "HTML", ...playButton() }
-  );
+  await ctx.replyWithPhoto(BANNER_URL, {
+    caption: `💰 <b>SpinMint Jackpot: ${fmtTon(jackpot)}</b>\n\nSpin for 1 TON — winner takes all.`,
+    parse_mode: "HTML", ...playButton(),
+  });
 });
 
 bot.command("spins", async (ctx) => {
@@ -287,10 +291,10 @@ bot.on("my_chat_member", async (ctx) => {
 
   const jackpot = await getJackpot();
   const pool    = jackpot !== null ? fmtTon(jackpot) : "growing";
-  await ctx.reply(
-    `🎰 <b>SpinMint is here!</b>\n\nTelegram's onchain spin game just joined the group.\n\n💰 Live jackpot: <b>${pool}</b>\n🎯 1 TON per spin  •  No signup needed\n\nUse /play anytime to bring up the game.`,
-    { parse_mode: "HTML", ...playButton() }
-  );
+  await ctx.replyWithPhoto(BANNER_URL, {
+    caption: `🎰 <b>SpinMint is here!</b>\n\nTelegram's onchain spin game just joined the group.\n\n💰 Live jackpot: <b>${pool}</b>\n🎯 1 TON per spin  •  No signup needed\n\nUse /play anytime to bring up the game.`,
+    parse_mode: "HTML", ...playButton(),
+  });
 });
 
 // ── Launch ────────────────────────────────────────────────────────────────────
